@@ -1,0 +1,65 @@
+{
+  "name": "CareerFlow AI Application Test",
+  "baseUrl": "http://localhost:8000",
+  "tests": [
+    {
+      "name": "Health Check",
+      "endpoint": "/",
+      "method": "GET",
+      "expectedStatus": 200
+    },
+    {
+      "name": "API Documentation",
+      "endpoint": "/docs",
+      "method": "GET",
+      "expectedStatus": 200
+    },
+    {
+      "name": "Resume Analysis Endpoint",
+      "endpoint": "/api/analyze/resume",
+      "method": "POST",
+      "expectedStatus": 422,
+      "description": "Should return validation error without payload"
+    },
+    {
+      "name": "Contract Analysis Endpoint",
+      "endpoint": "/api/analyze/contract",
+      "method": "POST",
+      "expectedStatus": 422,
+      "description": "Should return validation error without file"
+    },
+    {
+      "name": "Auto-Docs Generation Endpoint",
+      "endpoint": "/api/autodocs/generate",
+      "method": "POST",
+      "expectedStatus": 422,
+      "description": "Should return validation error without payload"
+    },
+    {
+      "name": "Human Interview Start Endpoint",
+      "endpoint": "/api/human_interview/start",
+      "method": "POST",
+      "expectedStatus": 422,
+      "description": "Should return validation error without payload"
+    },
+    {
+      "name": "Human Interview Answer Endpoint",
+      "endpoint": "/api/human_interview/answer",
+      "method": "POST",
+      "expectedStatus": 422,
+      "description": "Should return validation error without payload"
+    },
+    {
+      "name": "User Settings Endpoint",
+      "endpoint": "/api/user/settings",
+      "method": "GET",
+      "expectedStatus": 200
+    },
+    {
+      "name": "User History Endpoint",
+      "endpoint": "/api/user/history",
+      "method": "GET",
+      "expectedStatus": 200
+    }
+  ]
+}

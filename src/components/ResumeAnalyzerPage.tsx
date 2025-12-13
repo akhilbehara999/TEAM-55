@@ -47,8 +47,12 @@ const ResumeAnalyzerPage = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!file || !targetVibe) {
-      setError(!targetVibe ? 'Please select a target company vibe.' : 'Please select a PDF file.');
+    if (!file) {
+      setError('Please select a file to analyze');
+      return;
+    }
+    if (!targetVibe) {
+      setError('Please select a target company vibe.');
       return;
     }
 
@@ -56,11 +60,15 @@ const ResumeAnalyzerPage = () => {
     setError(null);
 
     try {
+      // Create FormData to send file and other data
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('target_vibe', targetVibe); // Send the target vibe to the backend
+      formData.append('target_vibe', targetVibe);
+      formData.append('job_description', ''); // Empty for now, can be enhanced later
 
-      const response = await fetch('http://localhost:8000/api/analyze/resume/file', {        method: 'POST',
+      // Updated to use consistent port 8000 and correct endpoint for file upload
+      const response = await fetch('http://localhost:8000/api/analyze/resume/file', {
+        method: 'POST',
         body: formData,
       });
 
@@ -72,7 +80,6 @@ const ResumeAnalyzerPage = () => {
       setAnalysisResult(data);
     } catch (err) {
       setError('Failed to analyze resume. Please try again.');
-      console.error('Analysis error:', err);
     } finally {
       setIsAnalyzing(false);
     }

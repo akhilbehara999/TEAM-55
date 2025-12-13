@@ -19,7 +19,7 @@ const AutoDocsGeneratorPage = () => {
       setError('Please enter a GitHub repository URL');
       return;
     }
-
+    
     if (!validateGithubUrl(githubUrl)) {
       setError('Please enter a valid GitHub repository URL');
       return;
@@ -30,6 +30,7 @@ const AutoDocsGeneratorPage = () => {
     setReadmeContent('');
 
     try {
+      // Updated to use consistent port 8000
       const response = await fetch('http://localhost:8000/api/autodocs/generate', {
         method: 'POST',
         headers: {
@@ -50,7 +51,6 @@ const AutoDocsGeneratorPage = () => {
       setReadmeContent(data.readme_content);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
-      console.error('Generation error:', err);
     } finally {
       setIsGenerating(false);
     }

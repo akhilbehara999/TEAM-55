@@ -54,7 +54,8 @@ const ContractGuardianPage = () => {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8002/api/analyze/contract', {
+      // Updated to use consistent port 8000
+      const response = await fetch('http://localhost:8000/api/analyze/contract', {
         method: 'POST',
         body: formData,
       });
@@ -83,7 +84,6 @@ const ContractGuardianPage = () => {
       } else {
         setError('Contract processing failed. Please ensure the document is a readable PDF and try again.');
       }
-      console.error('Analysis error:', err);
     } finally {
       setIsAnalyzing(false);
     }

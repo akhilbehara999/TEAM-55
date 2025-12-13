@@ -44,7 +44,6 @@ const LandingPage = () => {
 
   const handleWatchDemo = () => {
     // In a real app, this would open a modal or navigate to a demo page
-    console.log('Watch demo clicked');
   };
 
   return (

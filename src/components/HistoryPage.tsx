@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../supabase/AuthContext';
+import { getUserHistory, getInterviewSessionDetails } from '../supabase/services';
 
 interface HistoryRecord {
-  id: number;
-  user_id: number;
-  session_id: string;
+  id: string;
+  user_id: string;
+  session_id: string | null;
   timestamp: string;
   agent_name: string;
   summary_text: string;
@@ -21,48 +23,90 @@ const HistoryPage: React.FC = () => {
   const [recordsPerPage] = useState(20);
   const [selectedRecord, setSelectedRecord] = useState<HistoryRecord | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalLoading, setModalLoading] = useState(false);
+  const [modalData, setModalData] = useState<any>(null);
   
   const navigate = useNavigate();
+  const { user } = useAuth();
+
+  // Redirect to login if user is not authenticated
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+    }
+  }, [user, navigate]);
 
   useEffect(() => {
-    fetchHistoryData();
-  }, [currentPage]);
+    if (user) {
+      fetchHistoryData();
+    }
+  }, [user, currentPage]);
 
   const fetchHistoryData = async () => {
+    if (!user) return;
+    
     setLoading(true);
     setError(null);
     
     try {
-      const response = await fetch(`http://localhost:8002/api/user/history?page=${currentPage}&limit=${recordsPerPage}`);
+      const { records, totalCount, error: fetchError } = await getUserHistory(
+        user.id,
+        currentPage,
+        recordsPerPage
+      );
       
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+      if (fetchError) {
+        throw new Error(fetchError.message || 'Failed to fetch history data');
       }
       
-      const data = await response.json();
-      
-      if (data.status === 'success') {
-        setHistoryData(data.data);
-        setTotalRecords(data.total_records);
-      } else {
-        throw new Error(data.detail || 'Failed to fetch history data');
+      if (records) {
+        setHistoryData(records);
+        setTotalRecords(totalCount);
       }
-    } catch (err) {
-      console.error('Error fetching history data:', err);
+    } catch (err: any) {
       setError('Failed to load history data. Please try again later.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleViewDetails = (record: HistoryRecord) => {
+  const handleViewDetails = async (record: HistoryRecord) => {
     setSelectedRecord(record);
     setIsModalOpen(true);
+    setModalLoading(true);
+    setModalData(null);
+    
+    try {
+      // If this is an interview session, fetch the detailed data
+      if (record.agent_name === 'interview' && record.session_id) {
+        const { session, questions, answers, error: sessionError } = await getInterviewSessionDetails(record.session_id);
+        
+        if (sessionError) {
+          throw new Error(sessionError.message || 'Failed to fetch session details');
+        }
+        
+        setModalData({
+          session,
+          questions,
+          answers
+        });
+      } else {
+        // For other agents, just show the full output
+        setModalData({
+          full_output: record.full_output
+        });
+      }
+    } catch (err: any) {
+      setError('Failed to load details. Please try again.');
+    } finally {
+      setModalLoading(false);
+    }
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setSelectedRecord(null);
+    setModalData(null);
   };
 
   const formatDate = (dateString: string) => {
@@ -77,6 +121,11 @@ const HistoryPage: React.FC = () => {
       setCurrentPage(newPage);
     }
   };
+
+  // Don't render if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 py-6 px-4 sm:px-6">
@@ -198,7 +247,7 @@ const HistoryPage: React.FC = () => {
                           onClick={() => handlePageChange(pageNum)}
                           className={`px-3 py-1 rounded-md text-sm ${
                             currentPage === pageNum
-                              ? 'bg-green-600 text-white'
+                              ? 'bg-blue-600 text-white'
                               : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                           }`}
                         >
@@ -211,8 +260,8 @@ const HistoryPage: React.FC = () => {
                       onClick={() => handlePageChange(currentPage + 1)}
                       disabled={currentPage === totalPages}
                       className={`px-3 py-1 rounded-md text-sm ${
-                        currentPage === totalPages 
-                          ? 'bg-gray-700 text-gray-500 cursor-not-allowed' 
+                        currentPage === totalPages
+                          ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                           : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                       }`}
                     >
@@ -226,15 +275,15 @@ const HistoryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal for Detailed View */}
+      {/* Modal for viewing details */}
       {isModalOpen && selectedRecord && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
-          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-            <div className="px-6 py-4 border-b border-gray-700 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-white">Detailed Output</h2>
+          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <h3 className="text-xl font-bold text-white">Details</h3>
               <button
                 onClick={closeModal}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-gray-400 hover:text-white"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
@@ -242,40 +291,122 @@ const HistoryPage: React.FC = () => {
               </button>
             </div>
             
-            <div className="px-6 py-4 overflow-auto flex-grow">
-              <div className="mb-4">
-                <div className="text-sm text-gray-400">Agent:</div>
-                <div className="text-white font-medium">{selectedRecord.agent_name}</div>
+            {modalLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
               </div>
-              
-              <div className="mb-4">
-                <div className="text-sm text-gray-400">Timestamp:</div>
-                <div className="text-white">{formatDate(selectedRecord.timestamp)}</div>
+            ) : modalData ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-400">Agent:</span>
+                    <span className="text-white ml-2">{selectedRecord.agent_name}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Date/Time:</span>
+                    <span className="text-white ml-2">{formatDate(selectedRecord.timestamp)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400">Action:</span>
+                    <span className="text-white ml-2">{selectedRecord.action_type}</span>
+                  </div>
+                </div>
+                
+                {modalData.session ? (
+                  // Interview session details
+                  <div className="space-y-4">
+                    <div className="bg-gray-750 rounded-lg p-4">
+                      <h4 className="font-bold text-white mb-2">Interview Session</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                        <div>
+                          <span className="text-gray-400">Role:</span>
+                          <span className="text-white ml-2">{modalData.session.role}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Experience Level:</span>
+                          <span className="text-white ml-2">{modalData.session.experience_level}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-400">Status:</span>
+                          <span className="text-white ml-2 capitalize">{modalData.session.status}</span>
+                        </div>
+                        {modalData.session.final_score && (
+                          <div>
+                            <span className="text-gray-400">Final Score:</span>
+                            <span className="text-white ml-2">{modalData.session.final_score}/100</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {modalData.questions && modalData.questions.length > 0 && (
+                      <div className="bg-gray-750 rounded-lg p-4">
+                        <h4 className="font-bold text-white mb-2">Questions & Answers</h4>
+                        <div className="space-y-4">
+                          {modalData.questions.map((question: any, index: number) => {
+                            const answer = modalData.answers?.find((a: any) => a.question_id === question.id);
+                            return (
+                              <div key={question.id} className="border-l-4 border-purple-500 pl-4 py-2">
+                                <div className="text-white font-medium mb-1">
+                                  Q{index + 1}: {question.question_text}
+                                </div>
+                                {answer && (
+                                  <div className="text-gray-300 mt-2">
+                                    <span className="font-medium">Your Answer:</span>
+                                    <p className="mt-1">{answer.answer_text}</p>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {modalData.session.overall_feedback && (
+                      <div className="bg-gray-750 rounded-lg p-4">
+                        <h4 className="font-bold text-white mb-2">Overall Feedback</h4>
+                        <p className="text-gray-300">{modalData.session.overall_feedback}</p>
+                      </div>
+                    )}
+                    
+                    {modalData.session.strengths && modalData.session.strengths.length > 0 && (
+                      <div className="bg-gray-750 rounded-lg p-4">
+                        <h4 className="font-bold text-white mb-2">Strengths</h4>
+                        <ul className="list-disc list-inside text-gray-300 space-y-1">
+                          {modalData.session.strengths.map((strength: string, index: number) => (
+                            <li key={index}>{strength}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {modalData.session.weaknesses && modalData.session.weaknesses.length > 0 && (
+                      <div className="bg-gray-750 rounded-lg p-4">
+                        <h4 className="font-bold text-white mb-2">Areas for Improvement</h4>
+                        <ul className="list-disc list-inside text-gray-300 space-y-1">
+                          {modalData.session.weaknesses.map((weakness: string, index: number) => (
+                            <li key={index}>{weakness}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Other agent details
+                  <div className="bg-gray-750 rounded-lg p-4">
+                    <h4 className="font-bold text-white mb-2">Full Output</h4>
+                    <pre className="text-gray-300 text-sm whitespace-pre-wrap">
+                      {modalData.full_output}
+                    </pre>
+                  </div>
+                )}
               </div>
-              
-              <div className="mb-4">
-                <div className="text-sm text-gray-400">Summary:</div>
-                <div className="text-white">{selectedRecord.summary_text}</div>
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                No details available
               </div>
-              
-              <div>
-                <div className="text-sm text-gray-400 mb-2">Full Output:</div>
-                <pre className="bg-gray-900 p-4 rounded-lg text-sm text-gray-300 overflow-auto max-h-96">
-                  {typeof selectedRecord.full_output === 'string' 
-                    ? selectedRecord.full_output 
-                    : JSON.stringify(selectedRecord.full_output, null, 2)}
-                </pre>
-              </div>
-            </div>
-            
-            <div className="px-6 py-4 border-t border-gray-700 flex justify-end">
-              <button
-                onClick={closeModal}
-                className="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-600 transition-colors"
-              >
-                Close
-              </button>
-            </div>
+            )}
           </div>
         </div>
       )}

@@ -45,7 +45,6 @@ const SettingsPage: React.FC = () => {
       setSettings(data);
       setOriginalSettings({...data});
     } catch (err) {
-      console.error('Error fetching settings:', err);
       setError('Failed to load settings. Please try again later.');
     } finally {
       setLoading(false);
@@ -110,7 +109,6 @@ const SettingsPage: React.FC = () => {
         throw new Error(data.message || 'Failed to update settings');
       }
     } catch (err) {
-      console.error('Error updating settings:', err);
       setError('Failed to update settings. Please try again later.');
     } finally {
       setSaving(false);

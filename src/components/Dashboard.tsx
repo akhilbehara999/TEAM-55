@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../supabase/AuthContext';
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, signOut } = useAuth();
   const [activeNav, setActiveNav] = useState('dashboard');
 
   useEffect(() => {
+    // Redirect to login if user is not authenticated
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    
     // Set activeNav based on current route
     if (location.pathname === '/dashboard') {
       setActiveNav('dashboard');
@@ -15,10 +23,10 @@ const Dashboard = () => {
     } else if (location.pathname === '/settings') {
       setActiveNav('settings');
     }
-  }, [location.pathname]);
+  }, [user, location.pathname, navigate]);
 
-  const handleLogout = () => {
-    // In a real app, you would clear the auth token here
+  const handleLogout = async () => {
+    await signOut();
     navigate('/');
   };
 
@@ -34,11 +42,14 @@ const Dashboard = () => {
     } else if (agent === 'history') {
       navigate('/history');
     } else {
-      console.log(`Activating ${agent}`);
       // Implement other agent activation logic here
-    }
-    setActiveNav(agent);
+    }    setActiveNav(agent);
   };
+
+  // Don't render if user is not authenticated
+  if (!user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-900 flex flex-col">

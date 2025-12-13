@@ -2,9 +2,10 @@ import os
 import tempfile
 import json
 import time
-from fastapi import FastAPI, UploadFile, File, HTTPException, status, Depends
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import google.generativeai as genai
 from pdfminer.high_level import extract_text
@@ -12,6 +13,11 @@ import fitz  # PyMuPDF
 import logging
 from typing import Dict, Any
 from pydantic import BaseModel
+
+# Add gTTS import for text-to-speech
+from gtts import gTTS
+import io
+import uuid
 
 # Add the database and history imports
 from database.config import get_db
@@ -115,6 +121,26 @@ human_interview_sessions = {}
 # Add a set to track active sessions to prevent concurrent processing
 active_interview_sessions = set()
 
+# Add audio directory for storing generated audio files
+AUDIO_DIR = "audio_files"
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+# Add audio endpoint for serving generated audio files
+@app.get("/audio/{filename}")
+async def get_audio(filename: str):
+    """
+    Serve generated audio files
+    """
+    file_path = os.path.join(AUDIO_DIR, filename)
+    if os.path.exists(file_path):
+        return FileResponse(file_path, media_type="audio/mpeg")
+    else:
+        # If file doesn't exist, generate a default audio
+        tts = gTTS("Audio not available", lang='en')
+        temp_filename = os.path.join(AUDIO_DIR, filename)
+        tts.save(temp_filename)
+        return FileResponse(temp_filename, media_type="audio/mpeg")
+
 # Enhanced human interview endpoints with better question generation
 @app.post("/api/human_interview/start")
 async def start_human_interview(request: HumanInterviewStartRequest):
@@ -143,8 +169,14 @@ async def start_human_interview(request: HumanInterviewStartRequest):
         else:  # Expert
             first_question = "Thank you for your time today. Given your extensive experience, I'd love to hear about a significant challenge you've faced in your career and how you approached solving it."
         
-        # Generate a simple audio URL (in a real implementation, this would be actual TTS)
-        audio_url = f"/audio/{session_id}_q1.mp3"
+        # Generate audio file for the question
+        audio_filename = f"{session_id}_q1.mp3"
+        audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+        tts = gTTS(first_question, lang='en')
+        tts.save(audio_filepath)
+        
+        # Generate audio URL
+        audio_url = f"/audio/{audio_filename}"
         
         # Store the first question
         human_interview_sessions[session_id]["last_question"] = first_question
@@ -194,10 +226,16 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
             if last_entry.get('answer') == request.answer_text:
                 # This is a duplicate submission, return the same next question
                 if session.get('next_question'):
+                    # Generate audio file for the question
+                    audio_filename = f"{request.session_id}_q{session['total_questions_asked'] + 1}.mp3"
+                    audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+                    tts = gTTS(session['next_question'], lang='en')
+                    tts.save(audio_filepath)
+                    
                     return JSONResponse(content={
                         "session_id": request.session_id,
                         "question_text": session['next_question'],
-                        "audio_url": f"/audio/{request.session_id}_q{session['total_questions_asked'] + 1}.mp3",
+                        "audio_url": f"/audio/{audio_filename}",
                         "status": "continue"
                     })
         
@@ -276,8 +314,14 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
                 # General expert question
                 next_question = "Given your experience, how do you approach making decisions when you have incomplete information? Can you walk me through your decision-making framework?"
         
-        # Generate a simple audio URL (in a real implementation, this would be actual TTS)
-        audio_url = f"/audio/{request.session_id}_q{session['total_questions_asked'] + 1}.mp3"
+        # Generate audio file for the question
+        audio_filename = f"{request.session_id}_q{session['total_questions_asked'] + 1}.mp3"
+        audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+        tts = gTTS(next_question, lang='en')
+        tts.save(audio_filepath)
+        
+        # Generate audio URL
+        audio_url = f"/audio/{audio_filename}"
         
         # Store last question and next question for next iteration
         session['last_question'] = next_question
@@ -358,7 +402,7 @@ Previous Dialogue: []
 #    "overall_feedback": "A concise, professional report summarizing the user's performance, strengths, weaknesses, and a recommendation based on their stated {request.level} status."
 # }}
 """
-        
+
         # Create the prompt
         prompt = f"{system_prompt}\n\nGenerate the first interview question for an {request.level} {request.role}."
         
@@ -398,11 +442,17 @@ Previous Dialogue: []
             })
             interview_sessions[session_id]['question_count'] += 1
             
+            # Generate audio file for the question
+            audio_filename = f"{question_id}.mp3"
+            audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+            tts = gTTS(parsed_response['question'], lang='en')
+            tts.save(audio_filepath)
+            
             return JSONResponse(content={
                 "status": "success",
                 "question_id": question_id,
                 "question_text": parsed_response['question'],
-                "audio_url": f"/api/audio/{question_id}.mp3"
+                "audio_url": f"/audio/{audio_filename}"
             })
         except json.JSONDecodeError as je:
             logger.error(f"JSON parsing error: {str(je)}")
@@ -417,11 +467,17 @@ Previous Dialogue: []
             })
             interview_sessions[session_id]['question_count'] += 1
             
+            # Generate audio file for the fallback question
+            audio_filename = f"{question_id}.mp3"
+            audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+            tts = gTTS(fallback_question, lang='en')
+            tts.save(audio_filepath)
+            
             return JSONResponse(content={
                 "status": "success",
                 "question_id": question_id,
                 "question_text": fallback_question,
-                "audio_url": f"/api/audio/{question_id}.mp3"
+                "audio_url": f"/audio/{audio_filename}"
             })
     except Exception as e:
         logger.error(f"Error starting interview: {str(e)}")
@@ -517,9 +573,13 @@ Previous Dialogue: {session['questions_asked'][-1]['text']} - {request.user_answ
 #    "overall_feedback": "A concise, professional report summarizing the user's performance, strengths, weaknesses, and a recommendation based on their stated {session['level']} status."
 # }}
 """
+
+        # Create the prompt with context
+        previous_dialogue = ""
+        if session['questions_asked'] and session['answers_given']:
+            previous_dialogue = f"Previous Question: {session['questions_asked'][-1]['text']}\nUser Answer: {request.user_answer}"
         
-        # Create the prompt
-        prompt = f"{system_prompt}\n\nGenerate the next interview question based on the previous dialogue."
+        prompt = f"{system_prompt}\n\n{previous_dialogue}\n\nGenerate the next interview question."
         
         # Initialize the Gemini model
         model = genai.GenerativeModel('gemini-2.5-flash')
@@ -549,55 +609,51 @@ Previous Dialogue: {session['questions_asked'][-1]['text']} - {request.user_answ
                     raise ValueError(f"Missing required field: {field}")
             
             # Store the question in session
-            question_id = f"q_{len(session['questions_asked']) + 1}"
-            session['questions_asked'].append({
+            question_id = f"q_{len(interview_sessions[session_id]['questions_asked']) + 1}"
+            interview_sessions[session_id]['questions_asked'].append({
                 "id": question_id,
                 "text": parsed_response['question'],
                 "status": parsed_response['interview_status']
             })
-            session['question_count'] += 1
+            interview_sessions[session_id]['question_count'] += 1
             
-            # Check if interview is complete
-            if parsed_response['interview_status'] == 'complete':
-                final_score = 85  # In a real implementation, this would be calculated based on answers
-                overall_feedback = f"Excellent response to strategic questions. Need to be more precise on policy details. Overall, {session['level']}-level proficiency demonstrated."
-                
-                # Remove session
-                del interview_sessions[session_id]
-                
-                return JSONResponse(content={
-                    "status": "complete",
-                    "final_score": final_score,
-                    "overall_feedback": overall_feedback
-                })
+            # Generate audio file for the question
+            audio_filename = f"{question_id}.mp3"
+            audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+            tts = gTTS(parsed_response['question'], lang='en')
+            tts.save(audio_filepath)
             
             return JSONResponse(content={
                 "status": "success",
                 "question_id": question_id,
                 "question_text": parsed_response['question'],
-                "audio_url": f"/api/audio/{question_id}.mp3"
+                "audio_url": f"/audio/{audio_filename}"
             })
         except json.JSONDecodeError as je:
             logger.error(f"JSON parsing error: {str(je)}")
             logger.error(f"Raw response: {response.text}")
             # Return a fallback response
-            question_id = f"q_{len(session['questions_asked']) + 1}"
-            fallback_question = "What strategies would you use to improve employee engagement in our organization?"
-            session['questions_asked'].append({
+            question_id = f"q_{len(interview_sessions[session_id]['questions_asked']) + 1}"
+            fallback_question = "Can you elaborate more on that point?"
+            interview_sessions[session_id]['questions_asked'].append({
                 "id": question_id,
                 "text": fallback_question,
                 "status": "continue"
             })
-            session['question_count'] += 1
+            interview_sessions[session_id]['question_count'] += 1
+            
+            # Generate audio file for the fallback question
+            audio_filename = f"{question_id}.mp3"
+            audio_filepath = os.path.join(AUDIO_DIR, audio_filename)
+            tts = gTTS(fallback_question, lang='en')
+            tts.save(audio_filepath)
             
             return JSONResponse(content={
                 "status": "success",
                 "question_id": question_id,
                 "question_text": fallback_question,
-                "audio_url": f"/api/audio/{question_id}.mp3"
+                "audio_url": f"/audio/{audio_filename}"
             })
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error submitting interview answer: {str(e)}")
         raise HTTPException(
@@ -860,11 +916,102 @@ async def analyze_contract(file: UploadFile = File(...)):
         )
 
 # Add new Pydantic models for resume analysis endpoints
-class ResumeAnalysisRequest(BaseModel):
-    job_description: str
-    target_vibe: str
 
-# Resume Guardian endpoint for resume analysis
+# Add Pydantic model for file upload
+class ResumeFileAnalysisRequest(BaseModel):
+    target_vibe: str
+    job_description: str = ""
+
+# Resume Guardian endpoint for resume analysis with file upload
+@app.post("/api/analyze/resume/file")
+async def analyze_resume_file(
+    file: UploadFile = File(...),
+    target_vibe: str = Form(...),
+    job_description: str = Form("")
+):
+    """
+    Analyze resume file and provide feedback based on job description and target vibe
+    """
+    # Validate file type
+    if not file.content_type.startswith("application/pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are allowed"
+        )
+    
+    try:
+        # Extract text from the PDF file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            # Write the uploaded file content to the temporary file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        # Extract text from the PDF using PyMuPDF
+        try:
+            doc = fitz.open(temp_file_path)
+            resume_text = ""
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                resume_text += page.get_text()
+            doc.close()
+        except Exception as e:
+            logger.error(f"Failed to extract text from PDF: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to extract text from PDF: {str(e)}"
+            )
+        finally:
+            # Delete the temporary file
+            try:
+                os.unlink(temp_file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete temporary file: {str(e)}")
+        
+        # Check if text was extracted
+        if not resume_text or len(resume_text.strip()) == 0:
+            logger.warning("No text could be extracted from the PDF file")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract text from the PDF file. Please ensure it's a valid PDF with text content."
+            )
+        
+        logger.info(f"Successfully extracted {len(resume_text)} characters from PDF")
+        
+        # Initialize the ResumeIntelligenceAgent
+        agent = ResumeIntelligenceAgent()
+        
+        # Generate the analysis result
+        analysis_result = agent.analyze_resume(
+            resume_content=resume_text,
+            job_description=job_description,
+            target_vibe=target_vibe
+        )
+        
+        # Save to history
+        try:
+            overall_score = analysis_result.get("ats_score", "N/A")
+            history_manager.save_history(
+                user_id=1,  # Dummy user ID
+                agent_name="Resume Analyzer",
+                summary_text=f"Score: {overall_score}",
+                full_output=analysis_result
+            )
+        except Exception as e:
+            logger.error(f"Failed to save history record: {e}")
+        
+        return analysis_result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing resume: {str(e)}"
+        )
+
+# Resume Guardian endpoint for resume analysis (existing endpoint)
 @app.post("/api/analyze/resume")
 async def analyze_resume(request: ResumeAnalysisRequest):
     """
@@ -874,15 +1021,20 @@ async def analyze_resume(request: ResumeAnalysisRequest):
         # Initialize the ResumeIntelligenceAgent
         agent = ResumeIntelligenceAgent()
         
+        # For now, we'll use a dummy resume content since we're not uploading a file
+        # In a full implementation, you would extract text from an uploaded PDF
+        dummy_resume_content = "John Doe\nSoftware Engineer\nExperience: 5 years in Python and JavaScript\nEducation: BS in Computer Science"
+        
         # Generate the analysis result
         analysis_result = agent.analyze_resume(
+            resume_content=dummy_resume_content,
             job_description=request.job_description,
             target_vibe=request.target_vibe
         )
         
         # Save to history
         try:
-            overall_score = analysis_result.get("overall_score", "N/A")
+            overall_score = analysis_result.get("ats_score", "N/A")
             history_manager.save_history(
                 user_id=1,  # Dummy user ID
                 agent_name="Resume Analyzer",
@@ -1014,27 +1166,24 @@ async def update_user_settings(settings_update: UpdateSettings, db: Session = De
         )
 
 @app.get("/api/user/history")
-async def get_user_history(page: int = 1, limit: int = 20, db: Session = Depends(get_db)):
+async def get_user_history(page: int = 1, limit: int = 10, db: Session = Depends(get_db)):
     """
-    Retrieve paginated history records for the current user
+    Retrieve paginated history records for the authenticated user
     
     Args:
         page: Page number (1-indexed)
-        limit: Number of records per page (default: 20, max: 100)
+        limit: Number of records per page
+        db: Database session
         
     Returns:
-        JSON with status, total_records, and data array of history objects
+        JSON with pagination info and history records
     """
     try:
         # For now, we'll use a dummy user ID (1) since we don't have authentication
         # In a real implementation, this would come from the authenticated user
         user_id = 1
         
-        # Limit the maximum number of records per page
-        if limit > 100:
-            limit = 100
-        
-        # Get history records
+        # Get paginated history records
         total_records, history_records = history_manager.get_user_history(user_id, page, limit)
         
         return {
@@ -1049,6 +1198,7 @@ async def get_user_history(page: int = 1, limit: int = 20, db: Session = Depends
             detail=f"Error retrieving history: {str(e)}"
         )
 
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

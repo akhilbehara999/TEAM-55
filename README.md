@@ -49,7 +49,7 @@ Conducts realistic mock interviews with role-specific questions, evaluates verba
 Reviews employment contracts, identifies potential risks and unfavorable clauses, explains legal terminology in plain language, suggests negotiation points, and ensures users understand their rights and obligations before signing agreements.
 
 ### Auto-Docs Agent
-Generates professional career documents including cover letters, portfolio summaries, achievement trackers, reference letters, and career progression reports with customizable templates and industry-appropriate formatting.
+Generates professional career documents including cover letters, portfolio summaries, achievement trackers, and career progression reports with customizable templates and industry-appropriate formatting.
 
 These agents collaborate through shared context repositories, enabling cross-functional insights and maintaining continuity across different career activities.
 
@@ -148,8 +148,21 @@ npm install
 npm start
 ```
 
+### Landing Page Setup
+```bash
+# Navigate to project root
+cd ..
+
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+```
+
 ### Access
 Open `http://localhost:3000` in your browser to access CareerFlow AI.
+Open `http://localhost:5173` to view the landing page.
 
 ## 9. Use Cases
 

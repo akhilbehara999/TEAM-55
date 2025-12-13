@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 
 const LandingPage = () => {
   const [isVisible, setIsVisible] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setIsVisible(true);
@@ -31,6 +33,19 @@ const LandingPage = () => {
       }}
     />
   ));
+
+  const handleGetStarted = () => {
+    navigate('/signup');
+  };
+
+  const handleStartJourney = () => {
+    navigate('/signup');
+  };
+
+  const handleWatchDemo = () => {
+    // In a real app, this would open a modal or navigate to a demo page
+    console.log('Watch demo clicked');
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white overflow-hidden">
@@ -81,12 +96,22 @@ const LandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.8, duration: 0.8 }}
           >
-            <button className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full font-semibold text-lg hover:from-cyan-600 hover:to-blue-600 transition-all transform hover:scale-105 shadow-lg shadow-cyan-500/30">
+            <motion.button 
+              onClick={handleGetStarted}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full font-semibold text-lg hover:from-cyan-600 hover:to-blue-600 transition-all shadow-lg shadow-cyan-500/30"
+            >
               Get Started
-            </button>
-            <button className="px-8 py-4 bg-transparent border-2 border-purple-500 rounded-full font-semibold text-lg hover:bg-purple-500/10 transition-all">
+            </motion.button>
+            <motion.button 
+              onClick={handleWatchDemo}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-8 py-4 bg-transparent border-2 border-purple-500 rounded-full font-semibold text-lg hover:bg-purple-500/10 transition-all"
+            >
               Watch Demo
-            </button>
+            </motion.button>
           </motion.div>
         </motion.div>
         
@@ -361,9 +386,14 @@ const LandingPage = () => {
             viewport={{ once: true }}
             transition={{ delay: 0.4, duration: 0.6 }}
           >
-            <button className="px-10 py-5 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full font-bold text-xl hover:from-cyan-600 hover:to-purple-600 transition-all transform hover:scale-105 shadow-lg shadow-cyan-500/30">
+            <motion.button 
+              onClick={handleStartJourney}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="px-10 py-5 bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full font-bold text-xl hover:from-cyan-600 hover:to-purple-600 transition-all shadow-lg shadow-cyan-500/30"
+            >
               Start Your Journey Now
-            </button>
+            </motion.button>
           </motion.div>
         </div>
       </section>

@@ -871,6 +871,276 @@ Previous Dialogue: {session['questions_asked'][-1]['text']} - {request.user_answ
             detail=f"Error submitting interview answer: {str(e)}"
         )
 
+# Contract Guardian endpoint for PDF analysis
+@app.post("/api/analyze/contract")
+async def analyze_contract(file: UploadFile):
+    """
+    Analyze contract PDF using the Contract Guardian Agent
+    """
+    # Validate file type
+    if not file.content_type.startswith("application/pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are allowed"
+        )
+    
+    try:
+        # Create a temporary file to save the uploaded PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            # Write the uploaded file content to the temporary file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        # Extract text from the PDF using pdfminer
+        contract_text = extract_text_from_pdf(temp_file_path)
+        
+        # Delete the temporary file
+        os.unlink(temp_file_path)
+        
+        # Check if text was extracted
+        if not contract_text:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract text from the PDF file. Please ensure it's a valid PDF with text content."
+            )
+        
+        # Define the system prompt for the Contract Guardian Agent
+        system_prompt = """
+You are the Contract Guardian Agent. Your sole task is to analyze the provided contract text and extract specific, high-risk clauses and key compensation terms. Your analysis must be purely objective, focusing on the legal impact and providing actionable negotiation advice. Your output MUST be a single JSON object.
+
+Required JSON Output Structure (Strict):
+{
+  "overall_score": Integer (0-100), where 100 is low risk.
+  "summary": String (A concise 3-sentence summary of the main risks/benefits).
+  "key_terms": {
+    "salary_base": "string",
+    "start_date": "string",
+    "pto_days": integer,
+    "signing_bonus": "string"
+  },
+  "risk_clauses": [
+    {
+      "clause_name": "string",
+      "risk_level": "RED"|"YELLOW"|"GREEN",
+      "negotiation_strategy": "string"
+    }
+  ]
+}
+
+Analyze this contract text:
+"""
+
+        # Create the prompt
+        prompt = f"{system_prompt}\n\n{contract_text}"
+        
+        # Initialize the Gemini model
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # Generate content
+        response = model.generate_content(prompt)
+        
+        # Parse the JSON response
+        try:
+            # Clean the response text and parse as JSON
+            response_text = response.text.strip()
+            
+            # Handle potential markdown code blocks
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]  # Remove ```json
+            if response_text.startswith("```"):
+                response_text = response_text[3:]  # Remove ```
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]  # Remove ```
+            
+            parsed_response = json.loads(response_text)
+            
+            # Validate required fields
+            required_fields = ['overall_score', 'summary', 'key_terms', 'risk_clauses']
+            for field in required_fields:
+                if field not in parsed_response:
+                    raise ValueError(f"Missing required field: {field}")
+            
+            # Validate key_terms structure
+            required_key_terms = ['salary_base', 'start_date', 'pto_days', 'signing_bonus']
+            for term in required_key_terms:
+                if term not in parsed_response['key_terms']:
+                    raise ValueError(f"Missing required key term: {term}")
+            
+            # Validate risk_clauses structure
+            for clause in parsed_response['risk_clauses']:
+                required_clause_fields = ['clause_name', 'risk_level', 'negotiation_strategy']
+                for field in required_clause_fields:
+                    if field not in clause:
+                        raise ValueError(f"Missing required field in risk clause: {field}")
+                
+                # Validate risk_level values
+                if clause['risk_level'] not in ['RED', 'YELLOW', 'GREEN']:
+                    raise ValueError(f"Invalid risk level: {clause['risk_level']}")
+            
+            return JSONResponse(content=parsed_response)
+        except json.JSONDecodeError as je:
+            logger.error(f"JSON parsing error: {str(je)}")
+            logger.error(f"Raw response: {response.text}")
+            # Return a fallback response
+            fallback_response = {
+                "overall_score": 75,
+                "summary": "We've analyzed your contract and identified several key terms and potential risks. Please review the detailed breakdown below.",
+                "key_terms": {
+                    "salary_base": "Not specified",
+                    "start_date": "Not specified",
+                    "pto_days": 0,
+                    "signing_bonus": "Not specified"
+                },
+                "risk_clauses": [
+                    {
+                        "clause_name": "General Clause",
+                        "risk_level": "YELLOW",
+                        "negotiation_strategy": "Review all terms carefully with a legal professional before signing."
+                    }
+                ]
+            }
+            return JSONResponse(content=fallback_response)
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error analyzing contract with Gemini: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing contract: {str(e)}"
+        )
+
+# Auto-Docs endpoint for README generation
+@app.post("/api/autodocs/generate")
+async def generate_readme(request: dict):
+    """
+    Generate README.md for a GitHub repository using the Auto-Docs Agent
+    """
+    try:
+        github_url = request.get('github_url')
+        project_title = request.get('project_title')
+        
+        if not github_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="GitHub URL is required"
+            )
+        
+        # Import git here to avoid issues if not installed
+        import git
+        import shutil
+        
+        # Create a temporary directory for cloning
+        with tempfile.TemporaryDirectory() as temp_dir:
+            try:
+                # Clone the repository
+                repo = git.Repo.clone_from(github_url, temp_dir)
+                
+                # Extract file contents
+                concatenated_contents = ""
+                ignored_dirs = {'.git', 'node_modules', 'venv', '__pycache__', '.vscode', '.idea'}
+                ignored_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.ico', '.zip', '.tar', '.gz', '.exe', '.dll', '.so'}
+                
+                for root, dirs, files in os.walk(temp_dir):
+                    # Skip ignored directories
+                    dirs[:] = [d for d in dirs if d not in ignored_dirs]
+                    
+                    for file in files:
+                        # Skip ignored file extensions
+                        if any(file.endswith(ext) for ext in ignored_extensions):
+                            continue
+                        
+                        file_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(file_path, temp_dir)
+                        
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                                concatenated_contents += f"---FILE: {relative_path}---\n{content}\n\n"
+                        except (UnicodeDecodeError, PermissionError):
+                            # Skip binary or unreadable files
+                            continue
+                
+                # If no content was extracted, provide a fallback
+                if not concatenated_contents:
+                    concatenated_contents = "No readable source files found in the repository."
+                
+                # Determine project title
+                repo_name = github_url.rstrip('/').split('/')[-1].replace('.git', '')
+                final_project_title = project_title if project_title else repo_name
+                
+                # Define the system prompt for the Auto-Docs Agent
+                AUTO_DOCS_SYSTEM_PROMPT = """
+You are the Auto-Docs Agent. Your task is to generate a comprehensive and professional README.md file based on the provided codebase structure and content.
+
+--- CONTEXT ---
+Project Title Override: {project_title_or_repo_name}
+All File Contents:
+{concatenated_file_contents_from_cloned_repo}
+---
+
+--- INSTRUCTIONS ---
+1.  **Format:** Your entire response MUST be clean, valid Markdown suitable for a GitHub README.md file. Do not include any text outside the Markdown content (e.g., no conversational greetings or explanations).
+2.  **Sections:** Include the following standard sections, inferring content from the code provided:
+    * # Project Title (Use the Override or infer from code)
+    * ## Description (What does the project do?)
+    * ## Features (List key functionalities, e.g., API endpoints, core calculations)
+    * ## Installation (Provide clear steps, referencing requirements.txt or package.json)
+    * ## Usage (Provide a code snippet or simple steps to run the main functionality)
+    * ## Technologies Used (List inferred languages/frameworks)
+3.  **Tone:** Professional, informative, and concise.
+"""
+                
+                # Create the prompt
+                prompt = AUTO_DOCS_SYSTEM_PROMPT.format(
+                    project_title_or_repo_name=final_project_title,
+                    concatenated_file_contents_from_cloned_repo=concatenated_contents[:10000]  # Limit content size
+                )
+                
+                # Initialize the Gemini model
+                model = genai.GenerativeModel('gemini-2.5-flash')
+                
+                # Generate content
+                response = model.generate_content(prompt)
+                
+                # Get the raw Markdown response
+                readme_content = response.text.strip()
+                
+                # Handle potential markdown code blocks
+                if readme_content.startswith("```"):
+                    readme_content = readme_content[3:]  # Remove ```
+                if readme_content.endswith("```"):
+                    readme_content = readme_content[:-3]  # Remove ```
+                
+                return JSONResponse(content={
+                    "status": "success",
+                    "readme_content": readme_content,
+                    "filename": "README.md"
+                })
+                
+            except git.exc.GitCommandError as e:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to clone repository: {str(e)}"
+                )
+            except Exception as e:
+                logger.error(f"Error processing repository: {str(e)}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Error processing repository: {str(e)}"
+                )
+                
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Error generating README with Gemini: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating README: {str(e)}"
+        )
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8001)

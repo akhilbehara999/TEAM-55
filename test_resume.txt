@@ -1,0 +1,15 @@
+John Doe
+Software Engineer
+
+Experience:
+- Senior Software Developer at Tech Corp (2020-Present)
+- Full Stack Developer at Startup Inc (2018-2020)
+- Junior Developer at ABC Company (2016-2018)
+
+Skills:
+- Python, JavaScript, React, Node.js
+- SQL, MongoDB
+- AWS, Docker, Kubernetes
+
+Education:
+- B.S. Computer Science, University of Technology (2012-2016)

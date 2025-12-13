@@ -9,6 +9,7 @@ interface ChatMessage {
 }
 
 const InterviewSimulatorPage = () => {
+  const navigate = useNavigate();
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<string | null>(null);
   const [userAnswer, setUserAnswer] = useState('');
@@ -27,7 +28,6 @@ const InterviewSimulatorPage = () => {
   const [isListening, setIsListening] = useState(false);
   const [autoSubmitTimeout, setAutoSubmitTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
   
-  const navigate = useNavigate();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -314,18 +314,32 @@ const InterviewSimulatorPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-gray-800 py-6 px-4 sm:px-6">
+      {/* Back Button */}
+      <div className="max-w-4xl mx-auto mb-4">
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center text-gray-300 hover:text-white transition-colors group py-2"
+          aria-label="Back to Dashboard"
+        >
+          <svg className="w-5 h-5 mr-2 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 19l-7-7 7-7"></path>
+          </svg>
+          <span className="font-medium">Back</span>
+        </button>
+      </div>
+
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-white mb-2">Mock Interview Simulator</h1>
-          <p className="text-gray-300">Practice with Sarah, our HR Specialist. Get real-time feedback and improve your interview skills!</p>
+        <div className="text-center mb-6">
+          <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">🎤 Mock Interview</h1>
+          <p className="text-gray-300 text-sm sm:text-base max-w-2xl mx-auto">Practice with Sarah, our HR Specialist. Get real-time feedback!</p>
         </div>
 
         {!interviewStarted ? (
-          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-8 backdrop-blur-sm bg-opacity-90">
-            <h2 className="text-3xl font-bold text-white mb-6 text-center">Setup Your Mock Interview</h2>
+          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 sm:p-8 backdrop-blur-sm bg-opacity-90">
+            <h2 className="text-2xl sm:text-3xl font-bold text-white mb-5 text-center">Setup Your Interview</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="space-y-5 mb-7">
               <div>
                 <label htmlFor="role" className="block text-sm font-medium text-gray-300 mb-2">
                   Role
@@ -335,7 +349,7 @@ const InterviewSimulatorPage = () => {
                   id="role"
                   value={role}
                   onChange={(e) => setRole(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-gray-400"
+                  className="w-full px-4 py-3 bg-gray-700 border border-purple-500 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-white placeholder-gray-400"
                   placeholder="e.g., Senior Data Analyst"
                 />
               </div>
@@ -348,7 +362,7 @@ const InterviewSimulatorPage = () => {
                   id="experienceLevel"
                   value={experienceLevel}
                   onChange={(e) => setExperienceLevel(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white"
+                  className="w-full px-4 py-3 bg-gray-700 border border-purple-500 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-white"
                 >
                   <option value="Beginner" className="bg-gray-700">Beginner</option>
                   <option value="Intermediate" className="bg-gray-700">Intermediate</option>
@@ -360,48 +374,48 @@ const InterviewSimulatorPage = () => {
             <div className="flex justify-center">
               <button
                 onClick={startInterview}
-                className="px-8 py-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg font-semibold text-lg hover:from-blue-700 hover:to-indigo-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+                className="w-full py-3 sm:py-4 bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-lg font-semibold text-base sm:text-lg hover:from-purple-700 hover:to-indigo-800 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
               >
                 Start Interview
               </button>
             </div>
           </div>
         ) : interviewComplete ? (
-          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-8 backdrop-blur-sm bg-opacity-90">
-            <div className="text-center mb-8">
-              <div className="w-24 h-24 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 sm:p-8 backdrop-blur-sm bg-opacity-90">
+            <div className="text-center mb-6">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                 </svg>
               </div>
-              <h2 className="text-3xl font-bold text-white mb-2">Interview Complete!</h2>
+              <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2">Interview Complete!</h2>
               {finalScore && (
-                <p className="text-2xl text-gray-300">Final Score: <span className="font-bold text-green-400">{finalScore}/100</span></p>
+                <p className="text-xl sm:text-2xl text-gray-300">Score: <span className="font-bold text-purple-400">{finalScore}/100</span></p>
               )}
             </div>
             
             {overallFeedback && (
-              <div className="mb-8 p-6 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-xl font-semibold text-white mb-3">Overall Feedback</h3>
-                <p className="text-gray-300">{overallFeedback}</p>
+              <div className="mb-6 p-4 sm:p-5 bg-gray-700 rounded-lg border border-gray-600">
+                <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">Overall Feedback</h3>
+                <p className="text-gray-300 text-sm sm:text-base">{overallFeedback}</p>
               </div>
             )}
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="space-y-5 mb-6">
               {strengths.length > 0 && (
-                <div className="p-6 bg-gradient-to-br from-green-900 to-emerald-900 rounded-lg border border-green-700">
-                  <h3 className="text-xl font-semibold text-green-300 mb-3">Strengths</h3>
+                <div className="p-4 sm:p-5 bg-gradient-to-br from-purple-900 to-indigo-900 rounded-lg border border-purple-700">
+                  <h3 className="text-lg sm:text-xl font-semibold text-purple-300 mb-3">Strengths</h3>
                   <ul className="space-y-2">
                     {strengths.map((strength, index) => (
                       <li key={index} className="flex items-start">
                         <div className="flex-shrink-0 mt-1">
-                          <div className="w-5 h-5 rounded-full bg-green-800 flex items-center justify-center">
-                            <svg className="w-3 h-3 text-green-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                          <div className="w-5 h-5 rounded-full bg-purple-800 flex items-center justify-center">
+                            <svg className="w-3 h-3 text-purple-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                             </svg>
                           </div>
                         </div>
-                        <span className="ml-2 text-green-200">{strength}</span>
+                        <span className="ml-2 text-purple-200 text-sm sm:text-base">{strength}</span>
                       </li>
                     ))}
                   </ul>
@@ -409,8 +423,8 @@ const InterviewSimulatorPage = () => {
               )}
               
               {weaknesses.length > 0 && (
-                <div className="p-6 bg-gradient-to-br from-amber-900 to-yellow-900 rounded-lg border border-amber-700">
-                  <h3 className="text-xl font-semibold text-amber-300 mb-3">Areas for Improvement</h3>
+                <div className="p-4 sm:p-5 bg-gradient-to-br from-amber-900 to-yellow-900 rounded-lg border border-amber-700">
+                  <h3 className="text-lg sm:text-xl font-semibold text-amber-300 mb-3">Areas for Improvement</h3>
                   <ul className="space-y-2">
                     {weaknesses.map((weakness, index) => (
                       <li key={index} className="flex items-start">
@@ -421,7 +435,7 @@ const InterviewSimulatorPage = () => {
                             </svg>
                           </div>
                         </div>
-                        <span className="ml-2 text-amber-200">{weakness}</span>
+                        <span className="ml-2 text-amber-200 text-sm sm:text-base">{weakness}</span>
                       </li>
                     ))}
                   </ul>
@@ -429,34 +443,28 @@ const InterviewSimulatorPage = () => {
               )}
             </div>
             
-            <div className="flex justify-center gap-4">
+            <div className="flex justify-center">
               <button
                 onClick={handleReset}
-                className="px-6 py-3 bg-gray-700 text-white rounded-lg font-medium hover:bg-gray-600 transition-colors border border-gray-600"
+                className="w-full sm:w-auto px-5 py-3 bg-gray-700 text-white rounded-lg font-medium hover:bg-gray-600 transition-colors border border-gray-600"
               >
                 Try Another Interview
-              </button>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-lg font-medium hover:from-blue-700 hover:to-indigo-800 transition-all"
-              >
-                Back to Dashboard
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-6 backdrop-blur-sm bg-opacity-90">
+          <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-5 sm:p-6 backdrop-blur-sm bg-opacity-90">
             {/* Chat history */}
-            <div className="mb-6 max-h-96 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+            <div className="mb-5 max-h-64 sm:max-h-80 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
               {chatHistory.map((message) => (
                 <div 
                   key={message.id} 
-                  className={`mb-6 ${message.type === 'ai' ? 'text-left' : 'text-right'}`}
+                  className={`mb-5 ${message.type === 'ai' ? 'text-left' : 'text-right'}`}
                 >
                   <div className="flex items-start">
                     {message.type === 'ai' && (
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center mr-3">
-                        <span className="text-white text-sm font-bold">S</span>
+                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center mr-2 sm:mr-3">
+                        <span className="text-white text-xs sm:text-sm font-bold">S</span>
                       </div>
                     )}
                     <div className="flex-1">
@@ -464,39 +472,39 @@ const InterviewSimulatorPage = () => {
                         <div className="text-xs text-gray-400 mb-1">Sarah, HR Specialist</div>
                       )}
                       <div 
-                        className={`inline-block max-w-3/4 p-4 rounded-2xl ${
+                        className={`inline-block max-w-3/4 p-3 sm:p-4 rounded-2xl ${
                           message.type === 'ai' 
                             ? 'bg-gray-700 text-white rounded-tl-none' 
-                            : 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-tr-none'
+                            : 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-tr-none'
                         }`}
                       >
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        <p className="whitespace-pre-wrap text-sm sm:text-base">{message.content}</p>
                       </div>
                     </div>
                     {message.type === 'user' && (
-                      <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center ml-3">
-                        <span className="text-white text-sm font-bold">Y</span>
+                      <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center ml-2 sm:ml-3">
+                        <span className="text-white text-xs sm:text-sm font-bold">Y</span>
                       </div>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 mt-1 ml-13">
+                  <div className="text-xs text-gray-500 mt-1 ml-10 sm:ml-13">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
               ))}
               
               {isLoading && (
-                <div className="mb-6 text-left">
+                <div className="mb-5 text-left">
                   <div className="flex items-start">
-                    <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center mr-3">
-                      <span className="text-white text-sm font-bold">S</span>
+                    <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center mr-2 sm:mr-3">
+                      <span className="text-white text-xs sm:text-sm font-bold">S</span>
                     </div>
                     <div className="flex-1">
                       <div className="text-xs text-gray-400 mb-1">Sarah, HR Specialist</div>
-                      <div className="inline-block bg-gray-700 text-white p-4 rounded-2xl rounded-tl-none">
+                      <div className="inline-block bg-gray-700 text-white p-3 sm:p-4 rounded-2xl rounded-tl-none">
                         <div className="flex items-center">
-                          <div className="animate-spin rounded-full h-5 w-5 border-t-2 border-b-2 border-white mr-3"></div>
-                          <span>{isPlayingAudio ? "Speaking..." : "Thinking..."}</span>
+                          <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-t-2 border-b-2 border-white mr-2 sm:mr-3"></div>
+                          <span className="text-sm sm:text-base">{isPlayingAudio ? "Speaking..." : "Thinking..."}</span>
                         </div>
                       </div>
                     </div>
@@ -507,22 +515,22 @@ const InterviewSimulatorPage = () => {
             
             {/* Current question with speaker */}
             {currentQuestion && !isLoading && (
-              <div className="mb-6 p-4 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-2xl border border-gray-600">
+              <div className="mb-5 p-3 sm:p-4 bg-gradient-to-r from-gray-700 to-gray-800 text-white rounded-2xl border border-gray-600">
                 <div className="flex items-start">
-                  <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center mr-3">
-                    <span className="text-white text-sm font-bold">S</span>
+                  <div className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center mr-2 sm:mr-3">
+                    <span className="text-white text-xs sm:text-sm font-bold">S</span>
                   </div>
                   <div className="flex-1">
                     <div className="text-xs text-gray-400 mb-1">Sarah, HR Specialist</div>
-                    <p className="mb-3 text-lg">{currentQuestion}</p>
+                    <p className="mb-2 sm:mb-3 text-sm sm:text-base">{currentQuestion}</p>
                   </div>
                   <button 
                     onClick={replayAudio}
                     disabled={isPlayingAudio}
-                    className="ml-4 p-2 bg-gray-600 rounded-full hover:bg-gray-500 transition-colors disabled:opacity-50"
+                    className="ml-2 sm:ml-3 p-2 bg-gray-600 rounded-full hover:bg-gray-500 transition-colors disabled:opacity-50"
                     aria-label="Replay audio"
                   >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15.536a5 5 0 001.414 1.414m-2.828-9.9a9 9 0 012.828-2.828"></path>
                     </svg>
                   </button>
@@ -532,13 +540,13 @@ const InterviewSimulatorPage = () => {
             
             {/* Error message */}
             {error && (
-              <div className="mb-6 p-4 bg-red-900 border border-red-700 rounded-lg">
-                <p className="text-red-200">{error}</p>
+              <div className="mb-5 p-3 sm:p-4 bg-red-900 border border-red-700 rounded-lg">
+                <p className="text-red-200 text-sm sm:text-base">{error}</p>
               </div>
             )}
             
             {/* User input area */}
-            <div className="mb-6">
+            <div className="mb-5">
               <label htmlFor="answer" className="block text-sm font-medium text-gray-300 mb-2">
                 Your Response
               </label>
@@ -549,28 +557,28 @@ const InterviewSimulatorPage = () => {
                   value={userAnswer}
                   onChange={(e) => setUserAnswer(e.target.value)}
                   onKeyDown={handleKeyPress}
-                  placeholder="Type your answer here or use the microphone..."
-                  rows={4}
-                  className="flex-1 px-4 py-3 bg-gray-700 border border-gray-600 rounded-l-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-white placeholder-gray-400 resize-none"
+                  placeholder="Type your answer or use mic..."
+                  rows={3}
+                  className="flex-1 px-3 py-2 sm:px-4 sm:py-3 bg-gray-700 border border-purple-500 rounded-l-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-white placeholder-gray-400 resize-none text-sm sm:text-base"
                   disabled={isLoading || isListening}
                 />
                 <button
                   onClick={toggleListening}
                   disabled={isLoading}
-                  className={`px-4 rounded-r-lg flex items-center justify-center ${
+                  className={`px-3 sm:px-4 rounded-r-lg flex items-center justify-center ${
                     isListening 
                       ? 'bg-red-600 hover:bg-red-700 text-white' 
                       : 'bg-gray-600 hover:bg-gray-500 text-white'
                   } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   aria-label={isListening ? "Stop listening" : "Start voice input"}
                 >
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
                   </svg>
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {isListening ? "Listening... Speak now" : "Press Enter to submit, Shift+Enter for new line, or use the mic for voice input"}
+                {isListening ? "Listening... Speak now" : "Enter or mic to submit"}
               </p>
             </div>
             
@@ -578,13 +586,13 @@ const InterviewSimulatorPage = () => {
               <button
                 onClick={submitAnswer}
                 disabled={isLoading || (!userAnswer.trim() && !isListening)}
-                className={`px-6 py-3 rounded-lg font-medium transition-all ${
+                className={`w-full sm:w-auto px-4 py-2 sm:px-6 sm:py-3 rounded-lg font-medium transition-all ${
                   isLoading || (!userAnswer.trim() && !isListening)
                     ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                    : 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:from-blue-700 hover:to-indigo-800 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
+                    : 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white hover:from-purple-700 hover:to-indigo-800 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
                 }`}
               >
-                Submit Answer
+                Submit
               </button>
             </div>
           </div>

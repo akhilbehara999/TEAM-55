@@ -15,8 +15,13 @@ const AutoDocsGeneratorPage = () => {
   };
 
   const handleGenerate = async () => {
+    if (!githubUrl) {
+      setError('Please enter a GitHub repository URL');
+      return;
+    }
+
     if (!validateGithubUrl(githubUrl)) {
-      setError('Please enter a valid GitHub repository URL (e.g., https://github.com/user/repo)');
+      setError('Please enter a valid GitHub repository URL');
       return;
     }
 
@@ -25,7 +30,7 @@ const AutoDocsGeneratorPage = () => {
     setReadmeContent('');
 
     try {
-      const response = await fetch('http://localhost:8001/api/autodocs/generate', {
+      const response = await fetch('http://localhost:8000/api/autodocs/generate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

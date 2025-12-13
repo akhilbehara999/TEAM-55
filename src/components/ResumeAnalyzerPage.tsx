@@ -6,15 +6,32 @@ interface AnalysisResult {
   gen_z_roast: string;
   professional_fixes: string[];
   status: string;
+  // New fields for the enhanced resume analysis
+  buzzword_score: number;
+  rewrite_suggestions: Array<{
+    cliche_phrase: string;
+    quantifiable_rewrite: string;
+  }>;
+  rpa_score: number;
+  rpa_summary: string;
 }
 
 const ResumeAnalyzerPage = () => {
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
+  const [targetVibe, setTargetVibe] = useState<string>(''); // New state for target company vibe
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisResult, setAnalysisResult] = useState<any>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Options for the Target Company Vibe dropdown
+  const vibeOptions = [
+    { value: 'Aggressive/Startup', label: 'Aggressive/Startup (Fast-Paced, Agile)' },
+    { value: 'Fortune 500/Corporate', label: 'Fortune 500/Corporate (Formal, Risk-Averse)' },
+    { value: 'Non-Profit/Academic', label: 'Non-Profit/Academic (Mission-Driven, Collaborative)' },
+    { value: 'Creative/Agency', label: 'Creative/Agency (Dynamic, Bold)' }
+  ];
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -30,7 +47,10 @@ const ResumeAnalyzerPage = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!file) return;
+    if (!file || !targetVibe) {
+      setError(!targetVibe ? 'Please select a target company vibe.' : 'Please select a PDF file.');
+      return;
+    }
 
     setIsAnalyzing(true);
     setError(null);
@@ -38,9 +58,9 @@ const ResumeAnalyzerPage = () => {
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('target_vibe', targetVibe); // Send the target vibe to the backend
 
-      const response = await fetch('http://localhost:8001/api/analyze/resume/file', {
-        method: 'POST',
+      const response = await fetch('http://localhost:8000/api/analyze/resume/file', {        method: 'POST',
         body: formData,
       });
 
@@ -60,6 +80,7 @@ const ResumeAnalyzerPage = () => {
 
   const handleReset = () => {
     setFile(null);
+    setTargetVibe('');
     setAnalysisResult(null);
     setError(null);
     if (fileInputRef.current) {
@@ -134,6 +155,25 @@ const ResumeAnalyzerPage = () => {
               )}
             </div>
 
+            {/* Target Company Vibe Dropdown */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Target Company Vibe *
+              </label>
+              <select
+                value={targetVibe}
+                onChange={(e) => setTargetVibe(e.target.value)}
+                className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">Select a company vibe</option>
+                {vibeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {error && (
               <div className="mb-5 p-3 sm:p-4 bg-red-900 border border-red-700 rounded-lg">
                 <p className="text-red-200 text-sm">{error}</p>
@@ -143,9 +183,9 @@ const ResumeAnalyzerPage = () => {
             <div className="flex justify-center">
               <button
                 onClick={handleAnalyze}
-                disabled={!file || isAnalyzing}
+                disabled={!file || !targetVibe || isAnalyzing}
                 className={`w-full py-3 sm:py-4 rounded-lg font-semibold text-base sm:text-lg transition-all ${
-                  !file || isAnalyzing
+                  !file || !targetVibe || isAnalyzing
                     ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                     : 'bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:from-blue-700 hover:to-indigo-800 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5'
                 }`}
@@ -156,6 +196,23 @@ const ResumeAnalyzerPage = () => {
           </div>
         ) : (
           <div className="space-y-6">
+            {/* Gen Z Roast Card - Visually Distinct Section */}
+            <div className="bg-gradient-to-r from-pink-500 via-purple-500 to-indigo-600 rounded-2xl shadow-xl p-6 sm:p-7 transform transition-all hover:scale-[1.02]">
+              <div className="flex items-center mb-4">
+                <span className="text-2xl mr-2">🔥</span>
+                <h2 className="text-2xl sm:text-3xl font-bold text-white">Gen Z Roast</h2>
+                <span className="text-2xl ml-2">😎</span>
+              </div>
+              <div className="bg-black bg-opacity-30 rounded-xl p-4 sm:p-5">
+                <p className="text-lg sm:text-xl text-white font-medium italic text-center">
+                  "{analysisResult.gen_z_roast}"
+                </p>
+              </div>
+              <div className="mt-4 text-center">
+                <p className="text-pink-200 text-sm">This roast is AI-generated humor. Take it with a grain of salt! 🧂</p>
+              </div>
+            </div>
+
             {/* ATS Score Card */}
             <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-5 sm:p-6 backdrop-blur-sm bg-opacity-90">
               <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">📊 ATS Compatibility Score</h2>
@@ -171,8 +228,70 @@ const ResumeAnalyzerPage = () => {
                     ></div>
                   </div>
                 </div>
-                <div className="w-full">
-                  <p className="text-gray-300 text-sm sm:text-base text-center">{analysisResult.gen_z_roast}</p>
+              </div>
+            </div>
+
+            {/* De-Buzzifier Score Card */}
+            <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-5 sm:p-6 backdrop-blur-sm bg-opacity-90">
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">🗣️ De-Buzzifier Score</h2>
+              <div className="flex flex-col items-center">
+                <div className="text-center mb-4">
+                  <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysisResult.buzzword_score)}`}>
+                    {analysisResult.buzzword_score}<span className="text-xl sm:text-2xl">/100</span>
+                  </div>
+                  <div className="mt-2 w-24 h-2 bg-gray-700 rounded-full overflow-hidden mx-auto">
+                    <div 
+                      className={`h-full ${getScoreBgColor(analysisResult.buzzword_score)}`} 
+                      style={{ width: `${analysisResult.buzzword_score}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {/* Suggested Cliché Replacements */}
+                <div className="w-full mt-4">
+                  <h3 className="text-lg font-semibold text-white mb-3">Suggested Cliché Replacements</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-gray-300">
+                      <thead className="text-xs uppercase bg-gray-700">
+                        <tr>
+                          <th className="px-4 py-3">Original Cliché</th>
+                          <th className="px-4 py-3">Suggested Quantifiable Fix</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analysisResult.rewrite_suggestions.map((suggestion, index) => (
+                          <tr key={index} className="border-b border-gray-700 hover:bg-gray-750">
+                            <td className="px-4 py-3">{suggestion.cliche_phrase}</td>
+                            <td className="px-4 py-3">{suggestion.quantifiable_rewrite}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* RPA Score Card */}
+            <div className="bg-gray-800 rounded-2xl shadow-xl border border-gray-700 p-5 sm:p-6 backdrop-blur-sm bg-opacity-90">
+              <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">🎯 Recruiter Personality Alignment (RPA) Score</h2>
+              <div className="flex flex-col items-center">
+                <div className="text-center mb-4">
+                  <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysisResult.rpa_score)}`}>
+                    {analysisResult.rpa_score}<span className="text-xl sm:text-2xl">% Match</span>
+                  </div>
+                  <div className="mt-2 w-24 h-2 bg-gray-700 rounded-full overflow-hidden mx-auto">
+                    <div 
+                      className={`h-full ${getScoreBgColor(analysisResult.rpa_score)}`} 
+                      style={{ width: `${analysisResult.rpa_score}%` }}
+                    ></div>
+                  </div>
+                </div>
+                
+                {/* Vibe Alignment Summary */}
+                <div className="w-full mt-4">
+                  <h3 className="text-lg font-semibold text-white mb-3">Vibe Alignment Summary</h3>
+                  <p className="text-gray-300 text-sm sm:text-base">{analysisResult.rpa_summary}</p>
                 </div>
               </div>
             </div>

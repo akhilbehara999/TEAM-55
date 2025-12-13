@@ -12,9 +12,14 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True)
     full_name = Column(String)
+    username = Column(String, unique=True, index=True)  # Add username field
     hashed_password = Column(String)
     salt = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Settings fields
+    default_experience = Column(String, default="Beginner")  # "Beginner", "Intermediate", "Expert"
+    default_vibe = Column(String, default="Startup")  # "Startup", "Corporate", "Non-Profit", "Creative"
     
     def set_password(self, password: str):
         """Hash and set the user's password"""

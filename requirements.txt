@@ -1,9 +1,8 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-google-generativeai==0.3.2
-python-dotenv==1.0.0
-pydantic==2.5.0
-langchain==0.0.352
-langchain-google-genai==0.0.9
-pdfminer.six==20221105
-python-multipart==0.0.6
+fastapi==0.68.0
+uvicorn==0.15.0
+python-multipart==0.0.5
+PyMuPDF==1.18.17
+google-generativeai==0.3.1
+python-dotenv==0.19.0
+sqlalchemy==1.4.23
+pydantic==1.8.2

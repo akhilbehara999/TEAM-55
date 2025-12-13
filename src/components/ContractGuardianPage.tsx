@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface RiskClause {
@@ -42,29 +42,47 @@ const ContractGuardianPage = () => {
   };
 
   const handleAnalyze = async () => {
-    if (!file) return;
+    if (!file) {
+      setError('Please select a file to analyze');
+      return;
+    }
 
     setIsAnalyzing(true);
     setError(null);
-    setAnalysis(null);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
 
-      const response = await fetch('http://localhost:8001/api/analyze/contract', {
+      const response = await fetch('http://localhost:8002/api/analyze/contract', {
         method: 'POST',
         body: formData,
       });
 
       if (!response.ok) {
-        throw new Error('Analysis failed');
+        // Try to get error details from response
+        let errorMessage = 'Analysis failed';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.detail || errorMessage;
+        } catch (parseError) {
+          // If we can't parse JSON, use status text
+          errorMessage = response.statusText || errorMessage;
+        }
+        throw new Error(`Server error (${response.status}): ${errorMessage}`);
       }
 
       const data: ContractAnalysis = await response.json();
       setAnalysis(data);
     } catch (err) {
-      setError('Contract processing failed. Please ensure the document is a readable PDF and try again.');
+      // Provide more specific error messages based on the type of error
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        setError('Network error: Unable to connect to the server. Please ensure the backend is running.');
+      } else if (err instanceof Error) {
+        setError(`Contract processing failed: ${err.message}`);
+      } else {
+        setError('Contract processing failed. Please ensure the document is a readable PDF and try again.');
+      }
       console.error('Analysis error:', err);
     } finally {
       setIsAnalyzing(false);
@@ -90,15 +108,6 @@ const ContractGuardianPage = () => {
     if (score >= 80) return 'bg-green-500';
     if (score >= 60) return 'bg-yellow-500';
     return 'bg-red-500';
-  };
-
-  const getRiskTagColor = (riskLevel: string) => {
-    switch (riskLevel) {
-      case 'RED': return 'bg-red-500';
-      case 'YELLOW': return 'bg-yellow-500';
-      case 'GREEN': return 'bg-green-500';
-      default: return 'bg-gray-500';
-    }
   };
 
   return (
@@ -182,7 +191,7 @@ const ContractGuardianPage = () => {
             <div className="flex flex-col items-center justify-center py-8 sm:py-12">
               <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-t-4 border-b-4 border-green-500 mb-4 sm:mb-6"></div>
               <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">Analyzing Contract...</h2>
-              <p className="text-gray-300 text-sm sm:text-base">Analyzing {file?.name || 'your contract'}... Hang tight!</p>
+              <p className="text-gray-300 text-sm sm:text-base">Processing {file?.name || 'your contract'}... This usually takes 10-20 seconds.</p>
             </div>
           </div>
         )}

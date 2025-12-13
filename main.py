@@ -1,40 +1,56 @@
 import os
 import tempfile
 import json
-from fastapi import FastAPI, HTTPException, status, UploadFile
+import time
+from fastapi import FastAPI, UploadFile, File, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import google.generativeai as genai
 from pdfminer.high_level import extract_text
+import fitz  # PyMuPDF
 import logging
 from typing import Dict, Any
 from pydantic import BaseModel
 
+# Add the database and history imports
+from database.config import get_db
+from sqlalchemy.orm import Session
+from utils.history_manager import HistoryManager
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Import configurations
 from config import settings
-from agents.config import agent_config
+
+# Configure Gemini API with error handling
+try:
+    if settings.GOOGLE_API_KEY and settings.GOOGLE_API_KEY != "YOUR_NEW_GOOGLE_API_KEY_HERE":
+        genai.configure(api_key=settings.GOOGLE_API_KEY)
+        logger.info("Gemini API configured successfully")
+    else:
+        logger.warning("No valid Google API key found. Some features may not work.")
+except Exception as e:
+    logger.error(f"Failed to configure Gemini API: {str(e)}")
 
 # Import agent classes
 from agents.resume_agent import ResumeIntelligenceAgent
 from agents.interview_agent import InterviewSimulationAgent
-from agents.contract_agent import ContractGuardianAgent
 from agents.docs_agent import AutoDocsAgent
 from agents.orchestrator import MasterOrchestratorAgent
 
 # Import schemas
 from schemas.user import UserCreate, UserResponse
 from schemas.document import DocumentUpload, DocumentResponse
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Load environment variables
-load_dotenv()
-
-# Configure Gemini API
-genai.configure(api_key=settings.GOOGLE_API_KEY)
+from schemas.settings import UserSettings, UpdateSettings
 
 # Create FastAPI app
 app = FastAPI(
@@ -43,10 +59,20 @@ app = FastAPI(
     version=settings.APP_VERSION
 )
 
-# Add CORS middleware
+# Add CORS middleware with support for multiple origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=[
+        settings.FRONTEND_URL, 
+        "http://localhost:5173", 
+        "http://localhost:5174", 
+        "http://localhost:5175",
+        "http://127.0.0.1:5173",
+        "http://127.0.0.1:5174",
+        "http://127.0.0.1:5175",
+        "http://localhost:8002",
+        "http://127.0.0.1:8002"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,371 +81,21 @@ app.add_middleware(
 # Initialize orchestrator
 orchestrator = MasterOrchestratorAgent()
 
-# Pydantic models for requests
-class ResumeAnalysisRequest(BaseModel):
-    resume_content: str
-    job_description: str = ""
+# Initialize history manager
+history_manager = HistoryManager()
 
-class InterviewPrepRequest(BaseModel):
+# Pydantic models
+class ResumeAnalysisRequest(BaseModel):
+    job_description: str
+    target_vibe: str
+
+class InterviewStartRequest(BaseModel):
     role: str
     experience_level: str
-    interview_type: str
-
-class ContractReviewRequest(BaseModel):
-    contract_text: str
-
-class DocumentGenerationRequest(BaseModel):
-    document_type: str
-    content_data: Dict[Any, Any]
-
-class WorkflowRequest(BaseModel):
-    workflow: str
-    context: Dict[Any, Any]
-
-# Add new Pydantic models for interview endpoints
-class InterviewStartRequest(BaseModel):
-    user_id: str
-    role: str
-    level: str
 
 class InterviewAnswerRequest(BaseModel):
-    user_id: str
-    question_id: str
-    user_answer: str
-
-# Add session storage for interview sessions
-interview_sessions = {}
-
-# Health check endpoints
-@app.get("/")
-async def root():
-    return {
-        "message": "CareerFlow AI API is running!",
-        "version": "1.0.0",
-        "docs": "/docs"
-    }
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
-
-# Existing API endpoints for backward compatibility
-@app.get("/api/v1/")
-async def api_root():
-    return {"message": "CareerFlow AI API v1"}
-
-@app.post("/api/v1/users/", response_model=UserResponse)
-async def create_user(user: UserCreate):
-    # This would normally interact with a database
-    return UserResponse(
-        id=1,
-        email=user.email,
-        full_name=user.full_name,
-        created_at="2023-01-01T00:00:00Z"
-    )
-
-@app.post("/api/v1/documents/upload/", response_model=DocumentResponse)
-async def upload_document(document: DocumentUpload):
-    # This would normally process the document
-    return DocumentResponse(
-        id=1,
-        filename=document.filename,
-        document_type=document.document_type,
-        status="processed",
-        processed_at="2023-01-01T00:00:00Z"
-    )
-
-@app.get("/api/v1/health/")
-async def api_health_check():
-    return {"status": "healthy"}
-
-# Resume analysis functions
-def extract_text_from_pdf(file_path: str) -> str:
-    """
-    Extract text from PDF file using pdfminer.six
-    """
-    try:
-        text = extract_text(file_path)
-        return text.strip()
-    except Exception as e:
-        logger.error(f"Error extracting text from PDF: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Error processing PDF file: {str(e)}"
-        )
-
-def analyze_resume_with_gemini(resume_text: str) -> dict:
-    """
-    Analyze resume text using Gemini AI and return structured JSON response
-    """
-    try:
-        # Define the system prompt for the Resume Intelligence Agent
-        system_prompt = """
-You are the Resume Intelligence Agent. Your goal is to provide two outputs for the user's resume text: 
-1) A humorous, Gen-Z styled 'roast' for engagement, and 
-2) A clear, professional list of fixes for ATS optimization. 
-
-Analyze the provided resume text thoroughly. Your output MUST be a single JSON object with these exact fields:
-- ats_score: Integer (0-100) representing the compatibility score
-- gen_z_roast: String (The humorous critique)
-- professional_fixes: Array of Strings (specific, actionable improvements)
-- status: String ("success" or "error")
-
-Example response format:
-{
-  "ats_score": 75,
-  "gen_z_roast": "This resume is so basic, it makes instant noodles look gourmet...",
-  "professional_fixes": [
-    "Add quantifiable achievements with specific numbers",
-    "Replace vague buzzwords with concrete examples"
-  ],
-  "status": "success"
-}
-
-Analyze this resume text:
-"""
-
-        # Create the prompt
-        prompt = f"{system_prompt}\n\n{resume_text}"
-
-        # Initialize the Gemini model
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        # Generate content
-        response = model.generate_content(prompt)
-        
-        # Parse the JSON response
-        try:
-            # Clean the response text and parse as JSON
-            response_text = response.text.strip()
-            
-            # Handle potential markdown code blocks
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]  # Remove ```json
-            if response_text.startswith("```"):
-                response_text = response_text[3:]  # Remove ```
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]  # Remove ```
-            
-            parsed_response = json.loads(response_text)
-            
-            # Validate required fields
-            required_fields = ['ats_score', 'gen_z_roast', 'professional_fixes', 'status']
-            for field in required_fields:
-                if field not in parsed_response:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            return parsed_response
-        except json.JSONDecodeError as je:
-            logger.error(f"JSON parsing error: {str(je)}")
-            logger.error(f"Raw response: {response.text}")
-            # Return a fallback response
-            return {
-                "ats_score": 70,
-                "gen_z_roast": "Oops! My circuits are fried trying to parse this resume. But hey, at least you submitted something!",
-                "professional_fixes": [
-                    "Ensure your resume is well-formatted for easy parsing",
-                    "Use standard section headings (Experience, Education, Skills)",
-                    "Avoid complex layouts that might confuse ATS systems"
-                ],
-                "status": "success"
-            }
-    except Exception as e:
-        logger.error(f"Error analyzing resume with Gemini: {str(e)}")
-        return {
-            "ats_score": 0,
-            "gen_z_roast": "Even my AI powers couldn't make this resume look good. Time for a major overhaul!",
-            "professional_fixes": [
-                "Consider seeking professional resume writing help",
-                "Start with a clean, simple template",
-                "Focus on quantifiable achievements"
-            ],
-            "status": "error"
-        }
-
-# Unified API endpoints for all agent functionalities
-@app.post("/api/analyze/resume/file")
-async def analyze_resume_file(file: UploadFile):
-    """
-    Resume analysis endpoint that:
-    1. Receives a PDF file
-    2. Extracts text from the PDF
-    3. Calls Gemini with a specialized system prompt
-    4. Returns a predictable JSON structure
-    """
-    # Validate file type
-    if not file.content_type.startswith("application/pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed"
-        )
-    
-    try:
-        # Create a temporary file to save the uploaded PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            # Write the uploaded file content to the temporary file
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-        
-        # Extract text from the PDF
-        resume_text = extract_text_from_pdf(temp_file_path)
-        
-        # Delete the temporary file
-        os.unlink(temp_file_path)
-        
-        # Check if text was extracted
-        if not resume_text:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract text from the PDF file. Please ensure it's a valid PDF with text content."
-            )
-        
-        # Analyze the resume with Gemini
-        analysis_result = analyze_resume_with_gemini(resume_text)
-        
-        return JSONResponse(content=analysis_result)
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(e)}"
-        )
-
-@app.post("/api/v1/api/analyze/resume")
-async def analyze_resume_file_v1(file: UploadFile):
-    """
-    Resume analysis endpoint for frontend compatibility
-    """
-    # Validate file type
-    if not file.content_type.startswith("application/pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed"
-        )
-    
-    try:
-        # Create a temporary file to save the uploaded PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            # Write the uploaded file content to the temporary file
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-        
-        # Extract text from the PDF
-        resume_text = extract_text_from_pdf(temp_file_path)
-        
-        # Delete the temporary file
-        os.unlink(temp_file_path)
-        
-        # Check if text was extracted
-        if not resume_text:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract text from the PDF file. Please ensure it's a valid PDF with text content."
-            )
-        
-        # Analyze the resume with Gemini
-        analysis_result = analyze_resume_with_gemini(resume_text)
-        
-        return JSONResponse(content=analysis_result)
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(e)}"
-        )
-
-@app.post("/api/analyze/resume/text")
-async def analyze_resume_text(request: ResumeAnalysisRequest):
-    """
-    Analyze resume text using the Resume Intelligence Agent
-    """
-    try:
-        result = orchestrator.resume_agent.analyze_resume(
-            request.resume_content,
-            request.job_description
-        )
-        return JSONResponse(content=result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error analyzing resume: {str(e)}"
-        )
-
-@app.post("/api/simulate/interview")
-async def simulate_interview(request: InterviewPrepRequest):
-    """
-    Simulate interview using the Interview Simulation Agent
-    """
-    try:
-        result = orchestrator.interview_agent.simulate_interview(
-            request.role,
-            request.experience_level,
-            request.interview_type
-        )
-        return JSONResponse(content=result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error simulating interview: {str(e)}"
-        )
-
-@app.post("/api/review/contract")
-async def review_contract(request: ContractReviewRequest):
-    """
-    Review contract using the Contract Guardian Agent
-    """
-    try:
-        result = orchestrator.contract_agent.review_contract(
-            request.contract_text
-        )
-        return JSONResponse(content=result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error reviewing contract: {str(e)}"
-        )
-
-@app.post("/api/generate/document")
-async def generate_document(request: DocumentGenerationRequest):
-    """
-    Generate document using the Auto-Docs Agent
-    """
-    try:
-        result = orchestrator.docs_agent.generate_document(
-            request.document_type,
-            request.content_data
-        )
-        return JSONResponse(content=result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error generating document: {str(e)}"
-        )
-
-@app.post("/api/workflow/execute")
-async def execute_workflow(request: WorkflowRequest):
-    """
-    Execute complex workflows using the Master Orchestrator Agent
-    """
-    try:
-        result = orchestrator.coordinate_agents(
-            request.workflow,
-            request.context
-        )
-        return JSONResponse(content=result)
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error executing workflow: {str(e)}"
-        )
+    session_id: str
+    answer_text: str
 
 # Add new Pydantic models for human interview endpoints
 class HumanInterviewStartRequest(BaseModel):
@@ -430,8 +106,14 @@ class HumanInterviewAnswerRequest(BaseModel):
     session_id: str
     answer_text: str
 
+# Add session storage for interview sessions
+interview_sessions = {}
+
 # Add session storage for human interview sessions
 human_interview_sessions = {}
+
+# Add a set to track active sessions to prevent concurrent processing
+active_interview_sessions = set()
 
 # Enhanced human interview endpoints with better question generation
 @app.post("/api/human_interview/start")
@@ -485,7 +167,17 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
     """
     Submit a human interview answer and get the next realistic question with adaptive difficulty
     """
+    # Check if session is already being processed
+    if request.session_id in active_interview_sessions:
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="Session is already being processed. Please wait."
+        )
+    
     try:
+        # Mark session as active
+        active_interview_sessions.add(request.session_id)
+        
         # Retrieve session_id from memory
         if request.session_id not in human_interview_sessions:
             raise HTTPException(
@@ -494,6 +186,20 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
             )
         
         session = human_interview_sessions[request.session_id]
+        
+        # Check if this is a duplicate submission by comparing with last answer
+        # This prevents the same answer from being processed multiple times
+        if session['history_list']:
+            last_entry = session['history_list'][-1]
+            if last_entry.get('answer') == request.answer_text:
+                # This is a duplicate submission, return the same next question
+                if session.get('next_question'):
+                    return JSONResponse(content={
+                        "session_id": request.session_id,
+                        "question_text": session['next_question'],
+                        "audio_url": f"/audio/{request.session_id}_q{session['total_questions_asked'] + 1}.mp3",
+                        "status": "continue"
+                    })
         
         # Append user's answer to the session's history_list
         session['history_list'].append({
@@ -506,14 +212,15 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
         # Check if interview should be concluded (after 7 questions)
         if session['total_questions_asked'] >= 7:
             # Generate final assessment based on experience level
+            session_copy = session.copy()  # Make a copy before deleting
             del human_interview_sessions[request.session_id]
             
             # Customize feedback based on experience level
-            if session['experience_level'] == "Beginner":
+            if session_copy['experience_level'] == "Beginner":
                 feedback = "You did a great job explaining your background and motivations. For future interviews, try to connect your experiences more directly to the role requirements. Your enthusiasm is a strength!"
                 strengths = ["Clear communication", "Enthusiasm and motivation", "Good foundational understanding"]
                 weaknesses = ["Could connect experiences more directly to role", "Need more specific examples", "Technical depth could be improved"]
-            elif session['experience_level'] == "Intermediate":
+            elif session_copy['experience_level'] == "Intermediate":
                 feedback = "You demonstrated solid experience and good problem-solving abilities. To elevate your performance, focus on quantifying your achievements with specific metrics and showing more leadership initiative."
                 strengths = ["Relevant experience", "Good problem-solving approach", "Clear communication"]
                 weaknesses = ["Could include more specific metrics", "Need to elaborate on leadership examples", "Technical depth could be improved"]
@@ -521,6 +228,9 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
                 feedback = "You showcased extensive experience and strategic thinking. To refine your approach, consider providing more concise answers while maintaining depth, and ensure you're directly addressing the question asked."
                 strengths = ["Extensive experience", "Strategic thinking", "Strong technical foundation"]
                 weaknesses = ["Answers could be more concise", "Need to directly address questions", "Could show more innovative approaches"]
+            
+            # Remove from active sessions
+            active_interview_sessions.discard(request.session_id)
             
             return JSONResponse(content={
                 "session_id": request.session_id,
@@ -569,8 +279,12 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
         # Generate a simple audio URL (in a real implementation, this would be actual TTS)
         audio_url = f"/audio/{request.session_id}_q{session['total_questions_asked'] + 1}.mp3"
         
-        # Store last question for next iteration
+        # Store last question and next question for next iteration
         session['last_question'] = next_question
+        session['next_question'] = next_question  # Store for duplicate check
+        
+        # Remove from active sessions
+        active_interview_sessions.discard(request.session_id)
         
         return JSONResponse(content={
             "session_id": request.session_id,
@@ -579,8 +293,12 @@ async def submit_human_interview_answer(request: HumanInterviewAnswerRequest):
             "status": "continue"
         })
     except HTTPException:
+        # Remove from active sessions on error
+        active_interview_sessions.discard(request.session_id)
         raise
     except Exception as e:
+        # Remove from active sessions on error
+        active_interview_sessions.discard(request.session_id)
         logger.error(f"Error submitting human interview answer: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -740,6 +458,22 @@ async def submit_interview_answer(request: InterviewAnswerRequest):
             final_score = 85  # In a real implementation, this would be calculated based on answers
             overall_feedback = f"Excellent response to strategic questions. Need to be more precise on policy details. Overall, {session['level']}-level proficiency demonstrated."
             
+            # Save to history
+            try:
+                history_manager.save_history(
+                    user_id=1,  # Dummy user ID
+                    agent_name="Interview Simulator",
+                    summary_text=f"Score: {final_score}",
+                    full_output={
+                        "final_score": final_score,
+                        "overall_feedback": overall_feedback,
+                        "role": session['role'],
+                        "level": session['level']
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Failed to save history record: {e}")
+            
             # Remove session
             del interview_sessions[session_id]
             
@@ -871,146 +605,6 @@ Previous Dialogue: {session['questions_asked'][-1]['text']} - {request.user_answ
             detail=f"Error submitting interview answer: {str(e)}"
         )
 
-# Contract Guardian endpoint for PDF analysis
-@app.post("/api/analyze/contract")
-async def analyze_contract(file: UploadFile):
-    """
-    Analyze contract PDF using the Contract Guardian Agent
-    """
-    # Validate file type
-    if not file.content_type.startswith("application/pdf"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only PDF files are allowed"
-        )
-    
-    try:
-        # Create a temporary file to save the uploaded PDF
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            # Write the uploaded file content to the temporary file
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-        
-        # Extract text from the PDF using pdfminer
-        contract_text = extract_text_from_pdf(temp_file_path)
-        
-        # Delete the temporary file
-        os.unlink(temp_file_path)
-        
-        # Check if text was extracted
-        if not contract_text:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Could not extract text from the PDF file. Please ensure it's a valid PDF with text content."
-            )
-        
-        # Define the system prompt for the Contract Guardian Agent
-        system_prompt = """
-You are the Contract Guardian Agent. Your sole task is to analyze the provided contract text and extract specific, high-risk clauses and key compensation terms. Your analysis must be purely objective, focusing on the legal impact and providing actionable negotiation advice. Your output MUST be a single JSON object.
-
-Required JSON Output Structure (Strict):
-{
-  "overall_score": Integer (0-100), where 100 is low risk.
-  "summary": String (A concise 3-sentence summary of the main risks/benefits).
-  "key_terms": {
-    "salary_base": "string",
-    "start_date": "string",
-    "pto_days": integer,
-    "signing_bonus": "string"
-  },
-  "risk_clauses": [
-    {
-      "clause_name": "string",
-      "risk_level": "RED"|"YELLOW"|"GREEN",
-      "negotiation_strategy": "string"
-    }
-  ]
-}
-
-Analyze this contract text:
-"""
-
-        # Create the prompt
-        prompt = f"{system_prompt}\n\n{contract_text}"
-        
-        # Initialize the Gemini model
-        model = genai.GenerativeModel('gemini-2.5-flash')
-        
-        # Generate content
-        response = model.generate_content(prompt)
-        
-        # Parse the JSON response
-        try:
-            # Clean the response text and parse as JSON
-            response_text = response.text.strip()
-            
-            # Handle potential markdown code blocks
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]  # Remove ```json
-            if response_text.startswith("```"):
-                response_text = response_text[3:]  # Remove ```
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]  # Remove ```
-            
-            parsed_response = json.loads(response_text)
-            
-            # Validate required fields
-            required_fields = ['overall_score', 'summary', 'key_terms', 'risk_clauses']
-            for field in required_fields:
-                if field not in parsed_response:
-                    raise ValueError(f"Missing required field: {field}")
-            
-            # Validate key_terms structure
-            required_key_terms = ['salary_base', 'start_date', 'pto_days', 'signing_bonus']
-            for term in required_key_terms:
-                if term not in parsed_response['key_terms']:
-                    raise ValueError(f"Missing required key term: {term}")
-            
-            # Validate risk_clauses structure
-            for clause in parsed_response['risk_clauses']:
-                required_clause_fields = ['clause_name', 'risk_level', 'negotiation_strategy']
-                for field in required_clause_fields:
-                    if field not in clause:
-                        raise ValueError(f"Missing required field in risk clause: {field}")
-                
-                # Validate risk_level values
-                if clause['risk_level'] not in ['RED', 'YELLOW', 'GREEN']:
-                    raise ValueError(f"Invalid risk level: {clause['risk_level']}")
-            
-            return JSONResponse(content=parsed_response)
-        except json.JSONDecodeError as je:
-            logger.error(f"JSON parsing error: {str(je)}")
-            logger.error(f"Raw response: {response.text}")
-            # Return a fallback response
-            fallback_response = {
-                "overall_score": 75,
-                "summary": "We've analyzed your contract and identified several key terms and potential risks. Please review the detailed breakdown below.",
-                "key_terms": {
-                    "salary_base": "Not specified",
-                    "start_date": "Not specified",
-                    "pto_days": 0,
-                    "signing_bonus": "Not specified"
-                },
-                "risk_clauses": [
-                    {
-                        "clause_name": "General Clause",
-                        "risk_level": "YELLOW",
-                        "negotiation_strategy": "Review all terms carefully with a legal professional before signing."
-                    }
-                ]
-            }
-            return JSONResponse(content=fallback_response)
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
-    except Exception as e:
-        logger.error(f"Error analyzing contract with Gemini: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error analyzing contract: {str(e)}"
-        )
-
 # Auto-Docs endpoint for README generation
 @app.post("/api/autodocs/generate")
 async def generate_readme(request: dict):
@@ -1113,6 +707,21 @@ All File Contents:
                 if readme_content.endswith("```"):
                     readme_content = readme_content[:-3]  # Remove ```
                 
+                # Save to history
+                try:
+                    history_manager.save_history(
+                        user_id=1,  # Dummy user ID
+                        agent_name="Auto-Docs Generator",
+                        summary_text="Generated Successfully",
+                        full_output={
+                            "readme_content": readme_content,
+                            "filename": "README.md",
+                            "github_url": github_url
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save history record: {e}")
+                
                 return JSONResponse(content={
                     "status": "success",
                     "readme_content": readme_content,
@@ -1139,6 +748,305 @@ All File Contents:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating README: {str(e)}"
+        )
+
+# Add ContractReviewRequest model
+class ContractReviewRequest(BaseModel):
+    file: UploadFile
+
+# Contract Guardian endpoint for PDF analysis
+@app.post("/api/analyze/contract")
+async def analyze_contract(file: UploadFile = File(...)):
+    """
+    Analyze contract PDF and extract key terms and risk clauses
+    """
+    # Validate file type
+    if not file.content_type.startswith("application/pdf"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only PDF files are allowed"
+        )
+    
+    try:
+        # Create a temporary file to save the uploaded PDF
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            # Write the uploaded file content to the temporary file
+            content = await file.read()
+            temp_file.write(content)
+            temp_file_path = temp_file.name
+        
+        # Extract text from the PDF using PyMuPDF
+        try:
+            doc = fitz.open(temp_file_path)
+            contract_text = ""
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                contract_text += page.get_text()
+            doc.close()
+        except Exception as e:
+            logger.error(f"Failed to extract text from PDF: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to extract text from PDF: {str(e)}"
+            )
+        finally:
+            # Delete the temporary file
+            try:
+                os.unlink(temp_file_path)
+            except Exception as e:
+                logger.warning(f"Failed to delete temporary file: {str(e)}")
+        
+        # Check if text was extracted
+        if not contract_text or len(contract_text.strip()) == 0:
+            logger.warning("No text could be extracted from the PDF file")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not extract text from the PDF file. Please ensure it's a valid PDF with text content."
+            )
+        
+        logger.info(f"Successfully extracted {len(contract_text)} characters from PDF")
+        
+        # Limit contract text length to prevent API timeouts
+        max_length = 50000  # About 10-15 pages of text
+        if len(contract_text) > max_length:
+            contract_text = contract_text[:max_length]
+            logger.info(f"Truncated contract text to {len(contract_text)} characters")
+        
+        # Use the orchestrator to analyze the contract
+        try:
+            logger.info("Sending contract text to orchestrator for analysis")
+            result = orchestrator.route_request("contract", {"contract_text": contract_text})
+            logger.info(f"Received response from orchestrator: success={result.get('success')}")
+            
+            if result.get("success", False):
+                # The orchestrator returns the contract analysis result directly
+                # If it's wrapped in a data field, extract it; otherwise use the result as-is
+                data = result.get("data", result)
+                logger.info("Contract analysis completed successfully")
+                
+                # Save to history
+                try:
+                    overall_score = data.get("overall_score", "N/A")
+                    summary = data.get("summary", "Analysis completed")
+                    history_manager.save_history(
+                        user_id=1,  # Dummy user ID
+                        agent_name="Contract Guardian",
+                        summary_text=f"Score: {overall_score}",
+                        full_output=data
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to save history record: {e}")
+                
+                return data
+            else:
+                error_msg = result.get("error", "Unknown error")
+                logger.error(f"Contract analysis failed: {error_msg}")
+                raise Exception(error_msg)
+        except Exception as e:
+            logger.error(f"Error during contract analysis: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error analyzing contract: {str(e)}"
+            )
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in contract analysis: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing contract: {str(e)}"
+        )
+
+# Add new Pydantic models for resume analysis endpoints
+class ResumeAnalysisRequest(BaseModel):
+    job_description: str
+    target_vibe: str
+
+# Resume Guardian endpoint for resume analysis
+@app.post("/api/analyze/resume")
+async def analyze_resume(request: ResumeAnalysisRequest):
+    """
+    Analyze resume and provide feedback based on job description and target vibe
+    """
+    try:
+        # Initialize the ResumeIntelligenceAgent
+        agent = ResumeIntelligenceAgent()
+        
+        # Generate the analysis result
+        analysis_result = agent.analyze_resume(
+            job_description=request.job_description,
+            target_vibe=request.target_vibe
+        )
+        
+        # Save to history
+        try:
+            overall_score = analysis_result.get("overall_score", "N/A")
+            history_manager.save_history(
+                user_id=1,  # Dummy user ID
+                agent_name="Resume Analyzer",
+                summary_text=f"Score: {overall_score}",
+                full_output=analysis_result
+            )
+        except Exception as e:
+            logger.error(f"Failed to save history record: {e}")
+        
+        return analysis_result
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing resume: {str(e)}"
+        )
+
+# Add helper function for audio processing
+def preprocess_audio_for_speech_recognition(audio_data):
+    """
+    Preprocess audio data to improve speech recognition accuracy
+    """
+    try:
+        # This is a placeholder for actual audio preprocessing
+        # In a real implementation, you would:
+        # 1. Apply noise reduction filters
+        # 2. Normalize audio levels
+        # 3. Enhance speech frequencies
+        # 4. Remove background noise
+        
+        # For now, we'll just return the audio data as-is
+        # but in a production environment, you would integrate
+        # with libraries like scipy, librosa, or pydub for processing
+        return audio_data
+    except Exception as e:
+        logger.error(f"Error preprocessing audio: {str(e)}")
+        return audio_data
+
+@app.get("/api/user/settings")
+async def get_user_settings(db: Session = Depends(get_db)):
+    """
+    Retrieve the current settings for the authenticated user
+    
+    Returns:
+        JSON with user settings
+    """
+    try:
+        # For now, we'll use a dummy user ID (1) since we don't have authentication
+        # In a real implementation, this would come from the authenticated user
+        user_id = 1
+        
+        # Get user from database
+        from models.user import User
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Return user settings
+        return UserSettings(
+            username=user.username or f"user{user.id}",
+            email=user.email,
+            full_name=user.full_name or "",
+            default_experience=user.default_experience or "Beginner",
+            default_vibe=user.default_vibe or "Startup"
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error retrieving user settings: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving settings: {str(e)}"
+        )
+
+@app.patch("/api/user/settings")
+async def update_user_settings(settings_update: UpdateSettings, db: Session = Depends(get_db)):
+    """
+    Update the settings for the authenticated user
+    
+    Args:
+        settings_update: Partial settings update object
+        
+    Returns:
+        JSON with success message
+    """
+    try:
+        # For now, we'll use a dummy user ID (1) since we don't have authentication
+        # In a real implementation, this would come from the authenticated user
+        user_id = 1
+        
+        # Get user from database
+        from models.user import User
+        user = db.query(User).filter(User.id == user_id).first()
+        
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update user settings with only the provided fields
+        update_data = settings_update.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            setattr(user, field, value)
+        
+        # Save changes to database
+        db.commit()
+        db.refresh(user)
+        
+        return {
+            "status": "success",
+            "message": "Settings updated successfully."
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error updating user settings: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error updating settings: {str(e)}"
+        )
+
+@app.get("/api/user/history")
+async def get_user_history(page: int = 1, limit: int = 20, db: Session = Depends(get_db)):
+    """
+    Retrieve paginated history records for the current user
+    
+    Args:
+        page: Page number (1-indexed)
+        limit: Number of records per page (default: 20, max: 100)
+        
+    Returns:
+        JSON with status, total_records, and data array of history objects
+    """
+    try:
+        # For now, we'll use a dummy user ID (1) since we don't have authentication
+        # In a real implementation, this would come from the authenticated user
+        user_id = 1
+        
+        # Limit the maximum number of records per page
+        if limit > 100:
+            limit = 100
+        
+        # Get history records
+        total_records, history_records = history_manager.get_user_history(user_id, page, limit)
+        
+        return {
+            "status": "success",
+            "total_records": total_records,
+            "data": history_records
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving user history: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving history: {str(e)}"
         )
 
 if __name__ == "__main__":

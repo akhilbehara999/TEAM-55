@@ -7,6 +7,8 @@ import ResumeAnalyzerPage from './ResumeAnalyzerPage';
 import InterviewSimulatorPage from './InterviewSimulatorPage';
 import ContractGuardianPage from './ContractGuardianPage';
 import AutoDocsGeneratorPage from './AutoDocsGeneratorPage';
+import HistoryPage from './HistoryPage';
+import SettingsPage from './SettingsPage';
 
 const AppRouter = () => {
   return (
@@ -20,6 +22,8 @@ const AppRouter = () => {
         <Route path="/interview-simulator" element={<InterviewSimulatorPage />} />
         <Route path="/contract-guardian" element={<ContractGuardianPage />} />
         <Route path="/auto-docs" element={<AutoDocsGeneratorPage />} />
+        <Route path="/history" element={<HistoryPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Routes>
     </Router>
   );

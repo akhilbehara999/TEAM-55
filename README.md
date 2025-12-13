@@ -1,49 +1,18 @@
-# CareerFlow AI
+# CareerFlow AI - Intelligent Career Companion
 
-**The All-in-One AI Career Companion powered by Intelligent Agents**
-
----
+CareerFlow AI is an advanced GenAI-powered platform designed to assist job seekers throughout their career journey. By leveraging cutting-edge artificial intelligence technologies, CareerFlow AI provides personalized, real-time support for resume optimization, interview preparation, contract review, and professional document generation.
 
 ## 1. Project Overview
 
-CareerFlow AI is an innovative agent-based AI platform designed to support users throughout their entire career journey. From crafting compelling resumes to acing interviews, negotiating contracts, and managing career documentation, CareerFlow AI provides a unified solution that adapts to each user's unique needs.
+CareerFlow AI addresses critical gaps in traditional career support systems by offering an integrated, intelligent solution that adapts to individual user needs. Our platform combines multiple specialized AI agents to deliver comprehensive career assistance, from initial resume crafting to final contract negotiation.
 
-Our platform leverages multiple specialized AI agents that work in harmony to deliver personalized career assistance. Unlike fragmented tools that address isolated career challenges, CareerFlow AI offers a comprehensive ecosystem where each agent contributes to a cohesive career development experience through intelligent context sharing and collaboration.
-
-## 2. Problem Statement
-
-Modern career development faces significant challenges that traditional tools inadequately address:
-
-- **Fragmented Career Tools**: Professionals must juggle multiple disconnected platforms for resume building, interview prep, contract review, and document generation
-- **Resume Rejection**: Static templates and generic advice lead to resumes that fail to pass applicant tracking systems (ATS)
-- **Interview Unpreparedness**: Limited practice scenarios and lack of personalized feedback hinder interview success
-- **Legal Contract Risks**: Complex employment contracts often contain clauses that disadvantage employees without legal expertise
-- **Documentation Overload**: Managing career documents, certifications, and portfolios becomes cumbersome without centralized organization
-
-Existing solutions typically offer point-specific fixes rather than holistic career support, resulting in disjointed user experiences and incomplete career development.
-
-## 3. Solution Overview
-
-CareerFlow AI addresses these challenges through:
-
-- **A Unified Platform**: Single interface for all career development needs, eliminating tool switching and fragmented workflows
-- **Multiple Intelligent AI Agents**: Specialized agents for distinct career functions that can be activated individually or collaboratively
-- **Context Sharing Between Agents**: Seamless information flow between agents ensures consistent, personalized recommendations across all career activities
-
-Our agent-based architecture enables dynamic adaptation to user needs, providing tailored solutions that evolve with career progression while maintaining contextual awareness across different career stages.
-
-## 4. Agent-Based System Design
-
-CareerFlow AI employs five specialized AI agents orchestrated by a central intelligence:
-
-### Master Orchestrator Agent
-Coordinates all other agents, manages workflow routing, maintains session context, and ensures seamless transitions between career tasks. It determines which agents to activate based on user requests and synthesizes outputs for coherent responses.
+## 2. Core Features
 
 ### Resume Intelligence Agent
-Analyzes job descriptions, optimizes resumes for ATS compatibility, suggests keyword enhancements, formats content for maximum impact, and provides personalized improvement recommendations based on industry standards and role requirements.
+Analyzes resumes against job descriptions, identifies skill gaps, suggests keyword optimizations, and provides formatting recommendations to maximize Applicant Tracking System (ATS) compatibility and human recruiter appeal.
 
 ### Interview Simulation Agent
-Conducts realistic mock interviews with role-specific questions, evaluates verbal and non-verbal responses, provides detailed feedback on communication skills, and adapts difficulty based on user progress and target positions.
+Generates realistic, role-specific interview questions, conducts interactive mock interviews with voice interaction, and provides detailed performance feedback with improvement suggestions.
 
 ### Contract Guardian Agent
 Reviews employment contracts, identifies potential risks and unfavorable clauses, explains legal terminology in plain language, suggests negotiation points, and ensures users understand their rights and obligations before signing agreements.
@@ -53,6 +22,28 @@ Generates professional career documents including cover letters, portfolio summa
 
 These agents collaborate through shared context repositories, enabling cross-functional insights and maintaining continuity across different career activities.
 
+## 3. Technology Stack
+
+- **Frontend**: React + TypeScript + Tailwind CSS + Framer Motion
+- **Backend**: FastAPI + Python
+- **AI Framework**: LangChain + Google Gemini API
+- **Database**: SQLite (development) / PostgreSQL (production)
+- **Deployment**: Docker containers with Kubernetes orchestration
+
+## 4. Specialized AI Agents
+
+### Resume Intelligence Agent
+Optimizes resumes for specific job roles by analyzing job descriptions, identifying missing keywords, suggesting formatting improvements, and ensuring ATS compatibility.
+
+### Interview Simulation Agent
+Prepares users for interviews by generating realistic questions, conducting mock interviews with voice interaction, and providing comprehensive feedback on performance.
+
+### Contract Guardian Agent
+Reviews employment contracts, identifies potential risks and unfavorable clauses, explains legal terminology in plain language, suggests negotiation points, and ensures users understand their rights and obligations before signing agreements.
+
+### Auto-Docs Agent
+Generates professional career documents including cover letters, portfolio summaries, achievement trackers, and career progression reports with customizable templates and industry-appropriate formatting.
+
 ## 5. Application Workflow
 
 1. **User Enters Platform**: Access CareerFlow AI through web interface with secure authentication
@@ -61,151 +52,52 @@ These agents collaborate through shared context repositories, enabling cross-fun
 4. **AI Analysis**: Agents process user inputs, reference materials, and contextual data to generate insights
 5. **Actionable Output**: Receive personalized recommendations, documents, or interactive coaching sessions
 
-This workflow repeats dynamically as users progress through different career milestones, with accumulated context enhancing future interactions.
-
-## 6. System Architecture
-
-### Frontend
-- **Primary Interface**: React with TypeScript for responsive web application
-- **Alternative Interface**: Streamlit for rapid prototyping and specialized visualization components
-
-### Backend
-- **Core Logic**: Python-based server handling agent orchestration and business logic
-- **API Layer**: RESTful services facilitating communication between frontend and backend components
-
-### AI Engine
-- **Primary Model**: Google Gemini 1.5 Flash for balanced performance and cost efficiency
-- **Specialized Models**: Task-specific models for document processing, natural language understanding, and legal analysis
-
-### Supporting Infrastructure
-- **PDF Processing**: Libraries for document parsing, extraction, and generation
-- **Session Memory**: Context persistence ensuring continuity across user sessions
-- **Agent Communication**: Message queues and shared databases enabling inter-agent collaboration
-
-## 7. Technology Stack
-
-### Frontend Technologies
-- React
-- TypeScript
-- Streamlit
-- HTML5/CSS3
-- Responsive UI frameworks
-
-### Backend Technologies
-- Python
-- Flask/FastAPI
-- RESTful APIs
-- PostgreSQL/MongoDB
-
-### AI & Libraries
-- Google Gemini 1.5 Flash
-- LangChain for agent orchestration
-- PyPDF2/PDFMiner for document processing
-- NLTK/spaCy for natural language processing
-
-### Tools & APIs
-- Git/GitHub for version control
-- Docker for containerization
-- Google Cloud Platform
-- Postman for API testing
-
-## 8. Installation & Setup
+## 6. Getting Started
 
 ### Prerequisites
 - Python 3.8+
-- Node.js 14+
-- Google Cloud Account with Gemini API access
+- Node.js 16+
+- Google API Key for Gemini
+- Docker (for containerized deployment)
 
-### Backend Setup
-```bash
-# Clone repository
-git clone https://github.com/your-username/careerflow-ai.git
-cd careerflow-ai
+### Installation
+1. Clone the repository
+2. Install backend dependencies: `pip install -r requirements.txt`
+3. Install frontend dependencies: `npm install`
+4. Set up environment variables in `.env` file
+5. Run the development server: `python start_dev.py`
 
-# Create virtual environment
-python -m venv careerflow-env
-source careerflow-env/bin/activate  # On Windows: careerflow-env\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variables
-export GOOGLE_API_KEY="your-google-api-key"
-
-# Run backend server
-python app.py
+### Environment Variables
+Create a `.env` file with the following variables:
+```
+GOOGLE_API_KEY=your_google_api_key_here
+DATABASE_URL=sqlite:///./careerflow.db
+SECRET_KEY=your_secret_key_here
 ```
 
-### Frontend Setup
-```bash
-# Navigate to frontend directory
-cd frontend
+## 7. API Endpoints
 
-# Install dependencies
-npm install
+### Resume Analysis
+- `POST /api/analyze/resume` - Analyze resume against job description
 
-# Start development server
-npm start
-```
+### Interview Simulation
+- `POST /api/simulate/interview` - Generate interview questions
+- `POST /api/submit/interview` - Submit interview answers for feedback
 
-### Landing Page Setup
-```bash
-# Navigate to project root
-cd ..
+### Contract Analysis
+- `POST /api/analyze/contract` - Analyze employment contract for risks
 
-# Install dependencies
-npm install
+### Document Generation
+- `POST /api/autodocs/generate` - Generate professional documents
 
-# Start development server
-npm run dev
-```
+## 8. Contributing
 
-### Access
-Open `http://localhost:3000` in your browser to access CareerFlow AI.
-Open `http://localhost:5173` to view the landing page.
+We welcome contributions to CareerFlow AI! Please fork the repository and submit pull requests with your improvements.
 
-## 9. Use Cases
+## 9. License
 
-### Students
-Preparing for internships with resume optimization and interview practice tailored to entry-level positions.
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-### Fresh Graduates
-Navigating first job searches with comprehensive application package development and negotiation support.
+## 10. Contact
 
-### Job Seekers
-Accelerating career transitions through efficient application processes and market-appropriate positioning.
-
-### Developers
-Creating technical portfolios, preparing for technical interviews, and optimizing resumes for developer roles.
-
-## 10. Innovation & Hackathon Impact
-
-### Agent Architecture Innovation
-Our multi-agent approach represents a paradigm shift from monolithic AI assistants to specialized collaborative intelligence. Each agent focuses on domain expertise while contributing to a holistic career development experience through intelligent context sharing.
-
-### Real-World Impact
-CareerFlow AI democratizes access to premium career services traditionally available only through expensive coaches or legal professionals. Our solution particularly benefits underrepresented groups who lack access to professional networks and career resources.
-
-### Scalability
-The modular agent architecture enables easy expansion with new specialized agents for emerging career domains. Horizontal scaling of individual agents ensures performance consistency as user base grows.
-
-## 11. Future Enhancements
-
-### RAG Integration
-Implement Retrieval-Augmented Generation for enhanced accuracy in resume optimization and interview preparation using current market data.
-
-### Long-Term Memory
-Develop persistent user profiles that track career progression and adapt recommendations based on historical interactions and outcomes.
-
-### Voice Agents
-Integrate voice-enabled agents for hands-free interview practice and contract discussion scenarios.
-
-### Multi-Language Support
-Expand accessibility through localization for global markets and multilingual career support.
-
-### Career Analytics
-Implement dashboard views showing career progression metrics, market trends, and personalized growth recommendations.
-
----
-
-*CareerFlow AI - Empowering Your Professional Journey*
+For support or inquiries, please contact the development team at support@careerflow.ai

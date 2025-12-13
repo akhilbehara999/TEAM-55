@@ -1,9 +1,21 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [activeNav, setActiveNav] = useState('dashboard');
+
+  useEffect(() => {
+    // Set activeNav based on current route
+    if (location.pathname === '/dashboard') {
+      setActiveNav('dashboard');
+    } else if (location.pathname === '/history') {
+      setActiveNav('history');
+    } else if (location.pathname === '/settings') {
+      setActiveNav('settings');
+    }
+  }, [location.pathname]);
 
   const handleLogout = () => {
     // In a real app, you would clear the auth token here
@@ -19,10 +31,13 @@ const Dashboard = () => {
       navigate('/contract-guardian');
     } else if (agent === 'docs') {
       navigate('/auto-docs');
+    } else if (agent === 'history') {
+      navigate('/history');
     } else {
       console.log(`Activating ${agent}`);
       // Implement other agent activation logic here
     }
+    setActiveNav(agent);
   };
 
   return (
@@ -38,7 +53,14 @@ const Dashboard = () => {
           ].map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveNav(item.id)}
+              onClick={() => {
+                if (item.id === 'history') {
+                  navigate('/history');
+                } else if (item.id === 'settings') {
+                  navigate('/settings');
+                }
+                setActiveNav(item.id);
+              }}
               className={`px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
                 activeNav === item.id
                   ? 'bg-teal-900 text-teal-400 border border-teal-700'

@@ -1,16 +1,5 @@
 # CareerFlow AI Project Structure
 
-This document explains the organization of the CareerFlow AI project.
-
-## Project Overview
-
-CareerFlow AI is an innovative agent-based AI platform designed to support users throughout their entire career journey. The project consists of two main components:
-
-1. **Frontend**: A modern React/TypeScript application with animated landing page
-2. **Backend**: A FastAPI-based API server with specialized AI agents
-
-## Directory Structure
-
 ```
 TEAM-55/
 ├── agents/                 # AI agent implementations

@@ -32,9 +32,9 @@ class MasterOrchestratorAgent:
                 )
             elif request_type == "interview":
                 return self.interview_agent.simulate_interview(
-                    data.get("role", ""),
-                    data.get("experience_level", ""),
-                    data.get("interview_type", "")
+                    data.get("job_role", ""),
+                    data.get("interview_type", "behavioral"),
+                    data.get("difficulty_level", "intermediate")
                 )
             elif request_type == "contract":
                 return self.contract_agent.review_contract(
@@ -42,19 +42,14 @@ class MasterOrchestratorAgent:
                 )
             elif request_type == "docs":
                 return self.docs_agent.generate_document(
-                    data.get("document_type", ""),
-                    data.get("content_data", {})
+                    data.get("document_type", "cover_letter"),
+                    data.get("user_profile", {}),
+                    data.get("job_details", {})
                 )
             else:
-                return {
-                    "success": False,
-                    "error": f"Unknown request type: {request_type}"
-                }
+                raise ValueError(f"Unsupported request type: {request_type}")
         except Exception as e:
-            return {
-                "success": False,
-                "error": f"Error routing request: {str(e)}"
-            }
+            raise Exception(f"Error in {request_type} agent: {str(e)}")
     
     def coordinate_agents(self, workflow: str, context: Dict[Any, Any]) -> Dict[Any, Any]:
         """
@@ -94,10 +89,16 @@ class MasterOrchestratorAgent:
                     context.get("contract_text", "")
                 )
                 
+                # Extract issues from the new contract result format
+                contract_issues = []
+                if contract_result.get("success") and "data" in contract_result:
+                    risk_clauses = contract_result["data"].get("risk_clauses", [])
+                    contract_issues = [clause.get("clause_name", "") for clause in risk_clauses]
+                
                 docs_result = self.docs_agent.generate_document(
                     "counter_offer_letter",
                     {
-                        "contract_issues": contract_result.get("issues", []),
+                        "contract_issues": contract_issues,
                         "position": context.get("position", ""),
                         "company": context.get("company", "")
                     }

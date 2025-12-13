@@ -38,59 +38,100 @@ const InterviewSimulatorPage = () => {
       textareaRef.current.focus();
     }
     
-    // Initialize speech recognition
+    // Check for browser support
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false; // Change to false for auto-stop
-      recognitionRef.current.interimResults = true;
-      recognitionRef.current.lang = 'en-US';
+    if (!SpeechRecognition) {
+      setError('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari for voice input features.');
+      return;
+    }
+    
+    // Initialize speech recognition with better configuration
+    recognitionRef.current = new SpeechRecognition();
+    recognitionRef.current.continuous = false; // Single utterance mode
+    recognitionRef.current.interimResults = true;
+    recognitionRef.current.lang = 'en-US';
+    // Add noise reduction and confidence settings
+    recognitionRef.current.maxAlternatives = 1;
+    
+    recognitionRef.current.onresult = (event: any) => {
+      let finalTranscript = '';
+      let interimTranscript = '';
       
-      recognitionRef.current.onresult = (event: any) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript + ' ';
-          }
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        // Only process results with high confidence
+        if (event.results[i].isFinal && event.results[i][0].confidence > 0.7) {
+          finalTranscript += transcript + ' ';
+        } else if (event.results[i].isFinal) {
+          // For lower confidence, still include but mark as possibly inaccurate
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
         }
+      }
+      
+      // Update user answer with final transcript
+      if (finalTranscript) {
+        setUserAnswer((prev) => prev + finalTranscript);
         
-        if (finalTranscript) {
-          setUserAnswer((prev) => prev + finalTranscript);
-          
-          // Clear any existing timeout
-          if (autoSubmitTimeout) {
-            clearTimeout(autoSubmitTimeout);
-          }
-          
-          // Set a new timeout to auto-submit after 2 seconds of silence
-          const timeout = setTimeout(() => {
-            if (userAnswer.trim() || finalTranscript.trim()) {
-              submitAnswer();
-            }
-          }, 2000);
-          
-          setAutoSubmitTimeout(timeout);
-        }
-      };
-      
-      recognitionRef.current.onerror = (event: any) => {
-        console.error('Speech recognition error', event.error);
-        setIsListening(false);
+        // Clear any existing timeout
         if (autoSubmitTimeout) {
           clearTimeout(autoSubmitTimeout);
         }
-      };
-      
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-        // Auto-submit if we have content
-        if (userAnswer.trim() && autoSubmitTimeout) {
-          clearTimeout(autoSubmitTimeout);
-          submitAnswer();
-        }
-      };
-    }
+        
+        // Set a new timeout to auto-submit after 2 seconds of silence
+        const timeout = setTimeout(() => {
+          if ((userAnswer + finalTranscript).trim()) {
+            // Only submit if we're still in interview mode and not already loading
+            if (interviewStarted && !interviewComplete && !isLoading) {
+              submitAnswer();
+            }
+          }
+        }, 2000);
+        
+        setAutoSubmitTimeout(timeout);
+      }
+    };
+    
+    recognitionRef.current.onerror = (event: any) => {
+      console.error('Speech recognition error', event.error);
+      setIsListening(false);
+      if (autoSubmitTimeout) {
+        clearTimeout(autoSubmitTimeout);
+        setAutoSubmitTimeout(null);
+      }
+      // Show user-friendly error messages
+      switch(event.error) {
+        case 'no-speech':
+          setError('No speech detected. Please try again and speak clearly.');
+          break;
+        case 'audio-capture':
+          setError('Audio capture failed. Please check your microphone.');
+          break;
+        case 'not-allowed':
+        case 'permission-denied':
+          setError('Microphone access denied. Please allow microphone access in your browser settings.');
+          break;
+        case 'network':
+          setError('Network error. Please check your connection.');
+          break;
+        case 'bad-grammar':
+          setError('Grammar error. Please try again.');
+          break;
+        default:
+          setError(`Speech recognition error: ${event.error}. Please try again.`);
+      }
+    };
+    
+    recognitionRef.current.onend = () => {
+      setIsListening(false);
+      // Auto-submit if we have content and we're not already loading
+      if (userAnswer.trim() && autoSubmitTimeout && interviewStarted && !interviewComplete && !isLoading) {
+        clearTimeout(autoSubmitTimeout);
+        setAutoSubmitTimeout(null);
+        submitAnswer();
+      }
+    };
     
     return () => {
       if (recognitionRef.current) {
@@ -103,18 +144,32 @@ const InterviewSimulatorPage = () => {
         clearTimeout(autoSubmitTimeout);
       }
     };
-  }, [interviewStarted, currentQuestion, userAnswer, autoSubmitTimeout]);
+  }, [interviewStarted, currentQuestion, userAnswer, autoSubmitTimeout, interviewComplete, isLoading]);
 
   const replayAudio = () => {
     if (audioRef.current) {
-      audioRef.current.play();
-      setIsPlayingAudio(true);
+      // Reset playback position
+      audioRef.current.currentTime = 0;
+      
+      // Handle the play promise properly
+      const playPromise = audioRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsPlayingAudio(true);
+          })
+          .catch((error) => {
+            console.error('Audio replay error:', error);
+            setIsPlayingAudio(false);
+            setError('Failed to replay audio.');
+          });
+      }
     }
   };
 
   const toggleListening = () => {
     if (!recognitionRef.current) {
-      setError('Speech recognition is not supported in your browser.');
+      setError('Speech recognition is not supported in your browser. Please use Chrome, Edge, or Safari for voice input features.');
       return;
     }
     
@@ -127,8 +182,37 @@ const InterviewSimulatorPage = () => {
     } else {
       // Clear the answer input when starting to listen
       setUserAnswer('');
-      recognitionRef.current.start();
-      setIsListening(true);
+      
+      // Check if mediaDevices is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setError('Audio recording is not supported in your browser. Please use Chrome, Edge, or Safari.');
+        return;
+      }
+      
+      try {
+        // Request microphone permission explicitly
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(() => {
+            recognitionRef.current.start();
+            setIsListening(true);
+            setError(null); // Clear any previous errors
+          })
+          .catch((err) => {
+            console.error('Microphone access denied:', err);
+            if (err.name === 'NotAllowedError') {
+              setError('Microphone access denied. Please allow microphone access in your browser settings to use voice input.');
+            } else if (err.name === 'NotFoundError') {
+              setError('No microphone found. Please connect a microphone and try again.');
+            } else {
+              setError(`Microphone error: ${err.message}. Please check your audio settings.`);
+            }
+            setIsListening(false);
+          });
+      } catch (err) {
+        console.error('Error starting speech recognition:', err);
+        setError('Failed to start voice recognition. Please try again.');
+        setIsListening(false);
+      }
     }
   };
 
@@ -138,8 +222,19 @@ const InterviewSimulatorPage = () => {
     setError(null);
     
     try {
+      // Validate required fields
+      if (!role.trim()) {
+        throw new Error('Role is required');
+      }
+      if (!experienceLevel) {
+        throw new Error('Experience level is required');
+      }
+      
+      // Log the request details for debugging
+      console.log('Starting interview with:', { role, experienceLevel });
+      
       // Initial API call to start the interview
-      const response = await fetch('http://localhost:8001/api/human_interview/start', {
+      const response = await fetch('http://localhost:8000/api/human_interview/start', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -150,11 +245,16 @@ const InterviewSimulatorPage = () => {
         }),
       });
       
+      console.log('Response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Response error:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('Response data:', data);
       
       if (data.status === 'continue') {
         setSessionId(data.session_id);
@@ -170,25 +270,61 @@ const InterviewSimulatorPage = () => {
         
         setChatHistory([aiMessage]);
         
-        // Play audio
+        // Play audio with proper error handling
         if (data.audio_url) {
-          audioRef.current = new Audio(`http://localhost:8001${data.audio_url}`);
-          audioRef.current.onended = () => setIsPlayingAudio(false);
-          audioRef.current.play();
-          setIsPlayingAudio(true);
+          try {
+            // Stop any existing audio
+            if (audioRef.current) {
+              audioRef.current.pause();
+              audioRef.current = null;
+            }
+            
+            // Create new audio instance
+            audioRef.current = new Audio(`http://localhost:8000${data.audio_url}`);
+            audioRef.current.onended = () => {
+              setIsPlayingAudio(false);
+            };
+            
+            // Handle audio errors
+            audioRef.current.onerror = (e) => {
+              console.error('Audio playback error:', e);
+              setIsPlayingAudio(false);
+              // Don't show error to user, just continue silently
+            };
+            
+            // Play the audio
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  setIsPlayingAudio(true);
+                })
+                .catch((error) => {
+                  console.error('Audio play error:', error);
+                  setIsPlayingAudio(false);
+                  // Don't show error to user, just continue silently
+                });
+            }
+          } catch (audioError) {
+            console.error('Audio setup error:', audioError);
+            setIsPlayingAudio(false);
+            // Continue without audio
+          }
         }
       } else {
         throw new Error('Failed to start interview');
       }
     } catch (err) {
-      setError('Error: Interview session failed. Please try again.');
       console.error('Interview start error:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Interview session failed. Please try again.';
+      setError(`Error: ${errorMessage}`);
     } finally {
       setIsLoading(false);
     }
   };
 
   const submitAnswer = async () => {
+    // Prevent submission if no answer and not listening, or no session
     if ((!userAnswer.trim() && !isListening) || !sessionId) return;
     
     // Stop listening if still active
@@ -197,40 +333,71 @@ const InterviewSimulatorPage = () => {
       setIsListening(false);
     }
     
-    // Add user answer to chat history
+    // Clear any auto-submit timeout
+    if (autoSubmitTimeout) {
+      clearTimeout(autoSubmitTimeout);
+      setAutoSubmitTimeout(null);
+    }
+    
+    // Get the current answer before clearing
+    const answerToSubmit = userAnswer.trim() || '[Voice input submitted]';
+    
+    // Add user answer to chat history immediately
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       type: 'user',
-      content: userAnswer.trim() || '[Voice input submitted]',
+      content: answerToSubmit,
       timestamp: new Date()
     };
     
     setChatHistory(prev => [...prev, userMessage]);
     
-    // Clear the answer input
+    // Clear the answer input immediately
     setUserAnswer('');
     
     setIsLoading(true);
     setError(null);
     
     try {
+      // Validate required fields
+      if (!sessionId) {
+        throw new Error('Session ID is missing');
+      }
+      if (!answerToSubmit) {
+        throw new Error('Answer is required');
+      }
+      
+      // Log the request details for debugging
+      console.log('Submitting answer with:', { sessionId, answerToSubmit });
+      
       // API call to submit the answer and get the next question
-      const response = await fetch('http://localhost:8001/api/human_interview/answer', {
+      const response = await fetch('http://localhost:8000/api/human_interview/answer', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           session_id: sessionId,
-          answer_text: userAnswer.trim() || '[Voice input submitted]'
+          answer_text: answerToSubmit
         }),
       });
       
+      console.log('Submit response status:', response.status);
+      
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Submit response error:', errorText);
+        // Handle specific error cases
+        if (response.status === 423) {
+          // Session locked, wait a bit and retry once
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          throw new Error('Session busy. Please try again.');
+        }
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
       
       const data = await response.json();
+      console.log('Submit response data:', data);
       
       if (data.status === 'complete') {
         // Interview is complete
@@ -255,21 +422,60 @@ const InterviewSimulatorPage = () => {
         
         setChatHistory(prev => [...prev, aiMessage]);
         
-        // Play audio
+        // Play audio with proper error handling
         if (data.audio_url) {
-          audioRef.current = new Audio(`http://localhost:8001${data.audio_url}`);
-          audioRef.current.onended = () => setIsPlayingAudio(false);
-          audioRef.current.play();
-          setIsPlayingAudio(true);
+          try {
+            // Stop any existing audio
+            if (audioRef.current) {
+              audioRef.current.pause();
+              audioRef.current = null;
+            }
+            
+            // Create new audio instance
+            audioRef.current = new Audio(`http://localhost:8000${data.audio_url}`);
+            audioRef.current.onended = () => {
+              setIsPlayingAudio(false);
+            };
+            
+            // Handle audio errors
+            audioRef.current.onerror = (e) => {
+              console.error('Audio playback error:', e);
+              setIsPlayingAudio(false);
+              // Don't show error to user, just continue silently
+            };
+            
+            // Play the audio
+            const playPromise = audioRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  setIsPlayingAudio(true);
+                })
+                .catch((error) => {
+                  console.error('Audio play error:', error);
+                  setIsPlayingAudio(false);
+                  // Don't show error to user, just continue silently
+                });
+            }
+          } catch (audioError) {
+            console.error('Audio setup error:', audioError);
+            setIsPlayingAudio(false);
+            // Continue without audio
+          }
         }
       } else {
         throw new Error('Failed to get next question');
       }
     } catch (err) {
-      setError('Error: Interview session failed. Please try again.');
+      const errorMessage = err instanceof Error ? err.message : 'Interview session failed. Please try again.';
+      setError(`Error: ${errorMessage}`);
       console.error('Submit answer error:', err);
-    } finally {
+      // Reset loading state on error
       setIsLoading(false);
+      // Re-add the answer to the input field so user doesn't lose it
+      setUserAnswer(answerToSubmit);
+      // Remove the user message from chat history since submission failed
+      setChatHistory(prev => prev.filter(msg => msg.id !== `msg-${Date.now()}`));
     }
   };
 
@@ -358,16 +564,23 @@ const InterviewSimulatorPage = () => {
                 <label htmlFor="experienceLevel" className="block text-sm font-medium text-gray-300 mb-2">
                   Experience Level
                 </label>
-                <select
-                  id="experienceLevel"
-                  value={experienceLevel}
-                  onChange={(e) => setExperienceLevel(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-700 border border-purple-500 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-white"
-                >
-                  <option value="Beginner" className="bg-gray-700">Beginner</option>
-                  <option value="Intermediate" className="bg-gray-700">Intermediate</option>
-                  <option value="Expert" className="bg-gray-700">Expert</option>
-                </select>
+                <div className="relative">
+                  <select
+                    id="experienceLevel"
+                    value={experienceLevel}
+                    onChange={(e) => setExperienceLevel(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-700 border border-purple-500 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-white appearance-none"
+                  >
+                    <option value="Beginner">Beginner</option>
+                    <option value="Intermediate">Intermediate</option>
+                    <option value="Expert">Expert</option>
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path>
+                    </svg>
+                  </div>
+                </div>
               </div>
             </div>
             
@@ -565,9 +778,9 @@ const InterviewSimulatorPage = () => {
                 <button
                   onClick={toggleListening}
                   disabled={isLoading}
-                  className={`px-3 sm:px-4 rounded-r-lg flex items-center justify-center ${
+                  className={`px-3 sm:px-4 rounded-r-lg flex items-center justify-center transition-all duration-200 ${
                     isListening 
-                      ? 'bg-red-600 hover:bg-red-700 text-white' 
+                      ? 'bg-red-600 hover:bg-red-700 text-white animate-pulse' 
                       : 'bg-gray-600 hover:bg-gray-500 text-white'
                   } ${isLoading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   aria-label={isListening ? "Stop listening" : "Start voice input"}
@@ -578,10 +791,18 @@ const InterviewSimulatorPage = () => {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                {isListening ? "Listening... Speak now" : "Enter or mic to submit"}
+                {isListening ? (
+                  <span className="flex items-center">
+                    <span className="flex h-2 w-2 mr-1">
+                      <span className="animate-ping absolute h-2 w-2 rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative h-2 w-2 rounded-full bg-red-500"></span>
+                    </span>
+                    Listening... Speak now
+                  </span>
+                ) : "Enter or mic to submit"}
               </p>
             </div>
-            
+
             <div className="flex justify-end">
               <button
                 onClick={submitAnswer}
